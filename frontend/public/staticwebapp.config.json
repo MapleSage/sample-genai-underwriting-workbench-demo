@@ -1,0 +1,29 @@
+{
+    "navigationFallback": {
+        "rewrite": "/index.html",
+        "exclude": [
+            "/assets/*",
+            "/*.{css,scss,js,png,gif,ico,jpg,svg}"
+        ]
+    },
+    "routes": [
+        {
+            "route": "/auth/callback",
+            "rewrite": "/index.html"
+        },
+        {
+            "route": "/login",
+            "rewrite": "/index.html"
+        },
+        {
+            "route": "/jobs/*",
+            "rewrite": "/index.html"
+        }
+    ],
+    "responseOverrides": {
+        "404": {
+            "rewrite": "/index.html",
+            "statusCode": 200
+        }
+    }
+}

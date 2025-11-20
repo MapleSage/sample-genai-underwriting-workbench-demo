@@ -62,8 +62,27 @@ export async function handleOAuthCallback(): Promise<{
   const storedState = sessionStorage.getItem("oauth_state");
   const codeVerifier = sessionStorage.getItem("code_verifier");
 
+  console.log(
+    "OAuth callback - code:",
+    !!code,
+    "state:",
+    !!state,
+    "storedState:",
+    !!storedState,
+    "codeVerifier:",
+    !!codeVerifier
+  );
+  console.log("State match:", state === storedState);
+
   if (!code || !state || state !== storedState || !codeVerifier) {
-    console.error("Invalid OAuth callback");
+    console.error("Invalid OAuth callback - missing or mismatched parameters");
+    console.error({
+      code: !!code,
+      state: !!state,
+      storedState: !!storedState,
+      codeVerifier: !!codeVerifier,
+      stateMatch: state === storedState,
+    });
     return null;
   }
 
@@ -90,10 +109,15 @@ export async function handleOAuthCallback(): Promise<{
     });
 
     if (!response.ok) {
-      throw new Error("Token exchange failed");
+      const errorText = await response.text();
+      console.error("Token exchange failed:", response.status, errorText);
+      throw new Error(
+        `Token exchange failed: ${response.status} - ${errorText}`
+      );
     }
 
     const tokens = await response.json();
+    console.log("Tokens received successfully");
 
     // Store tokens
     localStorage.setItem("access_token", tokens.access_token);
