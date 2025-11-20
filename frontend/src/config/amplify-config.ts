@@ -4,7 +4,7 @@ export const amplifyConfig = {
   Auth: {
     Cognito: {
       userPoolId: "us-east-1_bdqsU9GjR",
-      userPoolClientId: "6ssi035ttjbidcqnmjs9lcikiq",
+      userPoolClientId: "5i2dhf6pff75v7i0ukvimddt7",
       loginWith: {
         oauth: {
           domain: "us-east-1bdqsu9gjr.auth.us-east-1.amazoncognito.com",

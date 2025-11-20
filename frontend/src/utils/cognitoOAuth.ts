@@ -1,6 +1,6 @@
 // Cognito OAuth Configuration
 const COGNITO_DOMAIN = "us-east-1bdqsu9gjr.auth.us-east-1.amazoncognito.com";
-const CLIENT_ID = "6ssi035ttjbidcqnmjs9lcikiq";
+const CLIENT_ID = "5i2dhf6pff75v7i0ukvimddt7";
 const REDIRECT_URI = window.location.origin + "/auth/callback";
 const LOGOUT_URI = window.location.origin + "/";
 
