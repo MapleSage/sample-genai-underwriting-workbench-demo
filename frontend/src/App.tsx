@@ -26,7 +26,42 @@ import {
   faHome,
   faSearch,
   faTimes,
+  faSignOutAlt,
 } from "@fortawesome/free-solid-svg-icons";
+import { useAuth } from "./contexts/AuthContext";
+import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
+import { AuthPage } from "./components/Auth/AuthPage";
+
+function AuthPageRoute() {
+  const { isAuthenticated } = useAuth();
+
+  if (isAuthenticated) {
+    return <Navigate to="/" replace />;
+  }
+
+  return <AuthPage />;
+}
+
+function SignOutButton() {
+  const { signOut } = useAuth();
+  const navigate = useNavigate();
+
+  const handleSignOut = () => {
+    signOut();
+    navigate("/login");
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={handleSignOut}
+      className="nav-button sign-out-button"
+      style={{ marginLeft: "10px" }}>
+      <FontAwesomeIcon icon={faSignOutAlt} style={{ marginRight: "8px" }} />
+      Sign Out
+    </button>
+  );
+}
 
 function UploadPage() {
   const [files, setFiles] = useState<File[]>([]);
@@ -306,6 +341,7 @@ function UploadPage() {
             <FontAwesomeIcon icon={faList} style={{ marginRight: "8px" }} />
             View All Jobs
           </button>
+          <SignOutButton />
         </div>
       </div>
 
@@ -719,6 +755,7 @@ function JobsList() {
           <button onClick={() => navigate("/")} className="nav-button">
             <FontAwesomeIcon icon={faFileMedical} /> Upload New
           </button>
+          <SignOutButton />
         </div>
       </div>
 
@@ -861,9 +898,31 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={<UploadPage />} />
-        <Route path="/jobs" element={<JobsList />} />
-        <Route path="/jobs/:jobId" element={<JobPageWrapper />} />
+        <Route path="/login" element={<AuthPageRoute />} />
+        <Route
+          path="/"
+          element={
+            <ProtectedRoute>
+              <UploadPage />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/jobs"
+          element={
+            <ProtectedRoute>
+              <JobsList />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/jobs/:jobId"
+          element={
+            <ProtectedRoute>
+              <JobPageWrapper />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </Router>
   );
