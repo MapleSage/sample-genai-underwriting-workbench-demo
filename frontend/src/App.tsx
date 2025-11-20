@@ -28,33 +28,41 @@ import {
   faTimes,
   faSignOutAlt,
 } from "@fortawesome/free-solid-svg-icons";
-import { useAuth } from "./contexts/AuthContext";
-import { ProtectedRoute } from "./components/Auth/ProtectedRoute";
-import { AuthPage } from "./components/Auth/AuthPage";
+import { useOAuth } from "./contexts/OAuthContext";
+import { LoginPage } from "./pages/LoginPage";
+import { OAuthCallback } from "./pages/OAuthCallback";
 
-function AuthPageRoute() {
-  const { isAuthenticated } = useAuth();
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, isLoading } = useOAuth();
 
-  if (isAuthenticated) {
-    return <Navigate to="/" replace />;
+  if (isLoading) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          height: "100vh",
+        }}>
+        Loading...
+      </div>
+    );
   }
 
-  return <AuthPage />;
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
 }
 
 function SignOutButton() {
-  const { signOut } = useAuth();
-  const navigate = useNavigate();
-
-  const handleSignOut = () => {
-    signOut();
-    navigate("/login");
-  };
+  const { signOut } = useOAuth();
 
   return (
     <button
       type="button"
-      onClick={handleSignOut}
+      onClick={signOut}
       className="nav-button sign-out-button"
       style={{ marginLeft: "10px" }}>
       <FontAwesomeIcon icon={faSignOutAlt} style={{ marginRight: "8px" }} />
@@ -898,7 +906,8 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/login" element={<AuthPageRoute />} />
+        <Route path="/login" element={<LoginPage />} />
+        <Route path="/auth/callback" element={<OAuthCallback />} />
         <Route
           path="/"
           element={
