@@ -1,203 +1,259 @@
-import { useState, useEffect } from 'react'
-import { BrowserRouter as Router, Routes, Route, useNavigate, useParams, Navigate, useLocation } from 'react-router-dom'
-import './styles/App.css'
-import { JobPage } from './components/JobPage'
-import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { 
-  faShieldAlt, 
-  faFileAlt, 
-  faStethoscope, 
-  faRobot, 
-  faFileMedical, 
-  faList, 
-  faCalendarAlt, 
-  faCheckCircle, 
+import { useState, useEffect } from "react";
+import {
+  BrowserRouter as Router,
+  Routes,
+  Route,
+  useNavigate,
+  useParams,
+  Navigate,
+  useLocation,
+} from "react-router-dom";
+import "./styles/App.css";
+import { JobPage } from "./components/JobPage";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faShieldAlt,
+  faFileAlt,
+  faStethoscope,
+  faRobot,
+  faFileMedical,
+  faList,
+  faCalendarAlt,
+  faCheckCircle,
   faHourglassHalf,
   faExclamationCircle,
   faHeartbeat,
   faHome,
   faSearch,
   faTimes,
-} from '@fortawesome/free-solid-svg-icons'
+} from "@fortawesome/free-solid-svg-icons";
 
 function UploadPage() {
-  const [files, setFiles] = useState<File[]>([])
-  const [uploading, setUploading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [insuranceType, setInsuranceType] = useState<'life' | 'property_casualty'>('property_casualty')
-  const [uploadProgress, setUploadProgress] = useState<Record<string, string>>({})
-  const navigate = useNavigate()
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [insuranceType, setInsuranceType] = useState<
+    "life" | "property_casualty"
+  >("property_casualty");
+  const [uploadProgress, setUploadProgress] = useState<Record<string, string>>(
+    {}
+  );
+  const navigate = useNavigate();
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFiles = Array.from(event.target.files || [])
-    setError(null)
-    
+    const selectedFiles = Array.from(event.target.files || []);
+    setError(null);
+
     if (selectedFiles.length === 0) {
-      return
+      return;
     }
 
     // Validate all files are PDFs
-    const invalidFiles = selectedFiles.filter(file => !file.type.includes('pdf'))
+    const invalidFiles = selectedFiles.filter(
+      (file) => !file.type.includes("pdf")
+    );
     if (invalidFiles.length > 0) {
-      setError(`Please select only PDF files. Invalid files: ${invalidFiles.map(f => f.name).join(', ')}`)
-      return
+      setError(
+        `Please select only PDF files. Invalid files: ${invalidFiles
+          .map((f) => f.name)
+          .join(", ")}`
+      );
+      return;
     }
 
-    setFiles(selectedFiles)
-    setUploadProgress({})
-  }
+    setFiles(selectedFiles);
+    setUploadProgress({});
+  };
 
   const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    const droppedFiles = Array.from(event.dataTransfer.files)
-    
+    event.preventDefault();
+    const droppedFiles = Array.from(event.dataTransfer.files);
+
     // Validate all files are PDFs
-    const invalidFiles = droppedFiles.filter(file => !file.type.includes('pdf'))
+    const invalidFiles = droppedFiles.filter(
+      (file) => !file.type.includes("pdf")
+    );
     if (invalidFiles.length > 0) {
-      setError(`Please select only PDF files. Invalid files: ${invalidFiles.map(f => f.name).join(', ')}`)
-      return
+      setError(
+        `Please select only PDF files. Invalid files: ${invalidFiles
+          .map((f) => f.name)
+          .join(", ")}`
+      );
+      return;
     }
 
-    setFiles(droppedFiles)
-    setUploadProgress({})
-    setError(null)
-  }
+    setFiles(droppedFiles);
+    setUploadProgress({});
+    setError(null);
+  };
 
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
-    event.preventDefault()
-  }
+    event.preventDefault();
+  };
 
   const handleUpload = async () => {
     if (files.length === 0) {
-      setError('Please select at least one file')
-      return
+      setError("Please select at least one file");
+      return;
     }
 
-    setUploading(true)
-    setError(null)
+    setUploading(true);
+    setError(null);
 
     try {
       if (files.length === 1) {
         // Single file upload - use existing endpoint
-        await uploadSingleFile(files[0])
+        await uploadSingleFile(files[0]);
       } else {
         // Multi-file upload - use batch endpoint
-        await uploadMultipleFiles(files)
+        await uploadMultipleFiles(files);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Upload failed')
-      setUploading(false)
+      setError(err instanceof Error ? err.message : "Upload failed");
+      setUploading(false);
     }
-  }
+  };
 
   const uploadSingleFile = async (file: File) => {
-    setUploadProgress({ [file.name]: 'Getting upload URL...' })
+    setUploadProgress({ [file.name]: "Getting upload URL..." });
 
-    const presignedUrlResponse = await fetch(`${import.meta.env.VITE_API_URL}/documents/upload`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        filename: file.name,
-        contentType: file.type,
-        insuranceType: insuranceType
-      }),
-    })
+    const presignedUrlResponse = await fetch(
+      `${import.meta.env.VITE_API_URL}/documents/upload`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type,
+          insuranceType: insuranceType,
+        }),
+      }
+    );
 
     if (!presignedUrlResponse.ok) {
       if (presignedUrlResponse.status === 401) {
-        throw new Error("Unauthorized: API access denied for generating upload URL.");
+        throw new Error(
+          "Unauthorized: API access denied for generating upload URL."
+        );
       } else {
-        const errorData = await presignedUrlResponse.json().catch(() => ({ error: 'Failed to get upload URL.' }));
-        throw new Error(errorData.error || `Failed to get upload URL: ${presignedUrlResponse.statusText}`);
+        const errorData = await presignedUrlResponse
+          .json()
+          .catch(() => ({ error: "Failed to get upload URL." }));
+        throw new Error(
+          errorData.error ||
+            `Failed to get upload URL: ${presignedUrlResponse.statusText}`
+        );
       }
     }
 
-    const { uploadUrl, jobId } = await presignedUrlResponse.json()
+    const { uploadUrl, jobId } = await presignedUrlResponse.json();
     if (!uploadUrl || !jobId) {
-      throw new Error('Invalid response from upload URL generation endpoint.');
+      throw new Error("Invalid response from upload URL generation endpoint.");
     }
 
-    setUploadProgress({ [file.name]: 'Uploading to S3...' })
+    setUploadProgress({ [file.name]: "Uploading to Azure..." });
 
-    const s3UploadResponse = await fetch(uploadUrl, {
-      method: 'PUT',
+    const azureUploadResponse = await fetch(uploadUrl, {
+      method: "PUT",
       headers: {
-        'Content-Type': file.type,
+        "Content-Type": file.type,
+        "x-ms-blob-type": "BlockBlob",
       },
       body: file,
-    })
+    });
 
-    if (!s3UploadResponse.ok) {
-      throw new Error(`S3 Upload Failed for ${file.name}: ${s3UploadResponse.statusText}`)
+    if (!azureUploadResponse.ok) {
+      throw new Error(
+        `Azure Upload Failed for ${file.name}: ${azureUploadResponse.statusText}`
+      );
     }
 
-    setUploadProgress({ [file.name]: 'Uploaded successfully' })
-    setUploading(false)
-    setFiles([])
-    navigate(`/jobs/${jobId}`)
-  }
+    setUploadProgress({ [file.name]: "Uploaded successfully" });
+    setUploading(false);
+    setFiles([]);
+    navigate(`/jobs/${jobId}`);
+  };
 
   const uploadMultipleFiles = async (files: File[]) => {
     // Step 1: Get batch upload URLs
-    setUploadProgress(Object.fromEntries(files.map(f => [f.name, 'Getting upload URLs...'])))
+    setUploadProgress(
+      Object.fromEntries(files.map((f) => [f.name, "Getting upload URLs..."]))
+    );
 
-    const batchResponse = await fetch(`${import.meta.env.VITE_API_URL}/documents/batch-upload`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        files: files.map(f => ({ filename: f.name })),
-        insuranceType: insuranceType
-      }),
-    })
+    const batchResponse = await fetch(
+      `${import.meta.env.VITE_API_URL}/documents/batch-upload`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          files: files.map((f) => ({ filename: f.name })),
+          insuranceType: insuranceType,
+        }),
+      }
+    );
 
     if (!batchResponse.ok) {
       if (batchResponse.status === 401) {
         throw new Error("Unauthorized: API access denied for batch upload.");
       } else {
-        const errorData = await batchResponse.json().catch(() => ({ error: 'Failed to get batch upload URLs.' }));
-        throw new Error(errorData.error || `Failed to get batch upload URLs: ${batchResponse.statusText}`);
+        const errorData = await batchResponse
+          .json()
+          .catch(() => ({ error: "Failed to get batch upload URLs." }));
+        throw new Error(
+          errorData.error ||
+            `Failed to get batch upload URLs: ${batchResponse.statusText}`
+        );
       }
     }
 
-    const { uploadUrls } = await batchResponse.json()
+    const { uploadUrls } = await batchResponse.json();
     if (!uploadUrls || !Array.isArray(uploadUrls)) {
-      throw new Error('Invalid response from batch upload endpoint.');
+      throw new Error("Invalid response from batch upload endpoint.");
     }
 
-    // Step 2: Upload all files to S3
+    // Step 2: Upload all files to Azure Blob Storage
     const uploadPromises = files.map(async (file, index) => {
-      const uploadInfo = uploadUrls.find(u => u.filename === file.name)
+      const uploadInfo = uploadUrls.find((u) => u.filename === file.name);
       if (!uploadInfo) {
-        throw new Error(`No upload URL found for ${file.name}`)
+        throw new Error(`No upload URL found for ${file.name}`);
       }
 
-      setUploadProgress(prev => ({ ...prev, [file.name]: 'Uploading to S3...' }))
+      setUploadProgress((prev) => ({
+        ...prev,
+        [file.name]: "Uploading to Azure...",
+      }));
 
-      const s3UploadResponse = await fetch(uploadInfo.uploadUrl, {
-        method: 'PUT',
+      const azureUploadResponse = await fetch(uploadInfo.uploadUrl, {
+        method: "PUT",
         headers: {
-          'Content-Type': file.type,
+          "Content-Type": file.type,
+          "x-ms-blob-type": "BlockBlob",
         },
         body: file,
-      })
+      });
 
-      if (!s3UploadResponse.ok) {
-        throw new Error(`S3 Upload Failed for ${file.name}: ${s3UploadResponse.statusText}`)
+      if (!azureUploadResponse.ok) {
+        throw new Error(
+          `Azure Upload Failed for ${file.name}: ${azureUploadResponse.statusText}`
+        );
       }
 
-      setUploadProgress(prev => ({ ...prev, [file.name]: 'Uploaded successfully' }))
-    })
+      setUploadProgress((prev) => ({
+        ...prev,
+        [file.name]: "Uploaded successfully",
+      }));
+    });
 
-    await Promise.all(uploadPromises)
-    
-    setUploading(false)
-    setFiles([])
-    navigate('/jobs')
-  }
+    await Promise.all(uploadPromises);
+
+    setUploading(false);
+    setFiles([]);
+    navigate("/jobs");
+  };
 
   return (
     <div className="container">
@@ -210,35 +266,44 @@ function UploadPage() {
         </h1>
         <div className="header-controls">
           <div className="header-insurance-toggle">
-            <label className={`option ${insuranceType === 'life' ? 'selected' : ''}`}>
-              <input 
-                type="radio" 
-                name="headerInsuranceType" 
-                value="life" 
-                checked={insuranceType === 'life'}
-                onChange={() => setInsuranceType('life')} 
+            <label
+              className={`option ${
+                insuranceType === "life" ? "selected" : ""
+              }`}>
+              <input
+                type="radio"
+                name="headerInsuranceType"
+                value="life"
+                checked={insuranceType === "life"}
+                onChange={() => setInsuranceType("life")}
               />
-              <span className="option-icon"><FontAwesomeIcon icon={faHeartbeat} /></span>
+              <span className="option-icon">
+                <FontAwesomeIcon icon={faHeartbeat} />
+              </span>
               <span>Life</span>
             </label>
-            <label className={`option ${insuranceType === 'property_casualty' ? 'selected' : ''}`}>
-              <input 
-                type="radio" 
-                name="headerInsuranceType" 
-                value="property_casualty" 
-                checked={insuranceType === 'property_casualty'}
-                onChange={() => setInsuranceType('property_casualty')} 
+            <label
+              className={`option ${
+                insuranceType === "property_casualty" ? "selected" : ""
+              }`}>
+              <input
+                type="radio"
+                name="headerInsuranceType"
+                value="property_casualty"
+                checked={insuranceType === "property_casualty"}
+                onChange={() => setInsuranceType("property_casualty")}
               />
-              <span className="option-icon"><FontAwesomeIcon icon={faHome} /></span>
+              <span className="option-icon">
+                <FontAwesomeIcon icon={faHome} />
+              </span>
               <span>P&C</span>
             </label>
           </div>
           <button
             type="button"
-            onClick={() => navigate('/jobs')}
-            className="nav-button"
-          >
-            <FontAwesomeIcon icon={faList} style={{ marginRight: '8px' }} />
+            onClick={() => navigate("/jobs")}
+            className="nav-button">
+            <FontAwesomeIcon icon={faList} style={{ marginRight: "8px" }} />
             View All Jobs
           </button>
         </div>
@@ -246,16 +311,32 @@ function UploadPage() {
 
       <div className="description-section">
         <h2>
-          {insuranceType === 'life' 
-            ? 'Streamline Your Life Insurance Underwriting' 
-            : 'Streamline Your Property & Casualty Insurance Underwriting'}
+          {insuranceType === "life"
+            ? "Streamline Your Life Insurance Underwriting"
+            : "Streamline Your Property & Casualty Insurance Underwriting"}
         </h2>
         <p className="intro-text">
-          {insuranceType === 'life' 
-            ? <span>TestTransform complex life insurance applications and medical documents into actionable insights using advanced AI analysis powered by <strong>Amazon Bedrock</strong> and <strong>Claude 3.7 Sonnet</strong>. Purpose-built for life insurance underwriters to automatically extract, analyze, and evaluate risk factors from application packets.</span>
-            : <span>TestTransform complex property & casualty insurance applications and ACORD forms into actionable insights using advanced AI analysis powered by <strong>Amazon Bedrock</strong> and <strong>Claude 3.7 Sonnet</strong>. Purpose-built for P&C insurance underwriters to automatically extract, analyze, and evaluate property risk factors from application packets.</span>}
+          {insuranceType === "life" ? (
+            <span>
+              TestTransform complex life insurance applications and medical
+              documents into actionable insights using advanced AI analysis
+              powered by <strong>Amazon Bedrock</strong> and{" "}
+              <strong>Claude 3.7 Sonnet</strong>. Purpose-built for life
+              insurance underwriters to automatically extract, analyze, and
+              evaluate risk factors from application packets.
+            </span>
+          ) : (
+            <span>
+              TestTransform complex property & casualty insurance applications
+              and ACORD forms into actionable insights using advanced AI
+              analysis powered by <strong>Amazon Bedrock</strong> and{" "}
+              <strong>Claude 3.7 Sonnet</strong>. Purpose-built for P&C
+              insurance underwriters to automatically extract, analyze, and
+              evaluate property risk factors from application packets.
+            </span>
+          )}
         </p>
-        
+
         <div className="features-grid">
           <div className="feature-card">
             <h3>
@@ -263,7 +344,7 @@ function UploadPage() {
               Document Analysis
             </h3>
             <ul>
-              {insuranceType === 'life' ? (
+              {insuranceType === "life" ? (
                 <>
                   <li>Process complete life insurance application packets</li>
                   <li>Extract medical history and risk factors</li>
@@ -281,11 +362,15 @@ function UploadPage() {
 
           <div className="feature-card">
             <h3>
-              <FontAwesomeIcon icon={insuranceType === 'life' ? faStethoscope : faHome} />
-              {insuranceType === 'life' ? 'Underwriter Analysis' : 'Property Assessment'}
+              <FontAwesomeIcon
+                icon={insuranceType === "life" ? faStethoscope : faHome}
+              />
+              {insuranceType === "life"
+                ? "Underwriter Analysis"
+                : "Property Assessment"}
             </h3>
             <ul>
-              {insuranceType === 'life' ? (
+              {insuranceType === "life" ? (
                 <>
                   <li>AI-driven mortality risk assessment</li>
                   <li>Medical history timeline construction</li>
@@ -309,7 +394,7 @@ function UploadPage() {
               Interactive Assistant
             </h3>
             <ul>
-              {insuranceType === 'life' ? (
+              {insuranceType === "life" ? (
                 <>
                   <li>Query complex medical histories</li>
                   <li>Instant access to policy-relevant details</li>
@@ -329,14 +414,20 @@ function UploadPage() {
         <div className="supported-documents">
           <h3>Supported Documents</h3>
           <div className="document-types">
-            {insuranceType === 'life' ? (
+            {insuranceType === "life" ? (
               <>
-                <span className="document-type">Life Insurance Applications</span>
-                <span className="document-type">Attending Physician Statements (APS)</span>
+                <span className="document-type">
+                  Life Insurance Applications
+                </span>
+                <span className="document-type">
+                  Attending Physician Statements (APS)
+                </span>
                 <span className="document-type">Lab Reports</span>
                 <span className="document-type">Pharmacy Records</span>
                 <span className="document-type">Financial Disclosures</span>
-                <span className="document-type">Medical History Questionnaires</span>
+                <span className="document-type">
+                  Medical History Questionnaires
+                </span>
                 <span className="document-type">Supplemental Forms</span>
               </>
             ) : (
@@ -354,46 +445,58 @@ function UploadPage() {
           </div>
         </div>
       </div>
-      
+
       <div className="upload-section">
         <h2>
-          <FontAwesomeIcon icon={faFileMedical} style={{ marginRight: '10px', color: '#3b82f6' }} />
+          <FontAwesomeIcon
+            icon={faFileMedical}
+            style={{ marginRight: "10px", color: "#3b82f6" }}
+          />
           Upload Documents
         </h2>
-        
+
         <div className="insurance-type-selector">
           <h3>Insurance Type</h3>
           <div className="insurance-options">
-            <label className={`option ${insuranceType === 'life' ? 'selected' : ''}`}>
-              <input 
-                type="radio" 
-                name="insuranceType" 
-                value="life" 
-                checked={insuranceType === 'life'}
-                onChange={() => setInsuranceType('life')} 
+            <label
+              className={`option ${
+                insuranceType === "life" ? "selected" : ""
+              }`}>
+              <input
+                type="radio"
+                name="insuranceType"
+                value="life"
+                checked={insuranceType === "life"}
+                onChange={() => setInsuranceType("life")}
               />
-              <span className="option-icon"><FontAwesomeIcon icon={faHeartbeat} /></span>
+              <span className="option-icon">
+                <FontAwesomeIcon icon={faHeartbeat} />
+              </span>
               <span className="option-label">Life Insurance</span>
             </label>
-            <label className={`option ${insuranceType === 'property_casualty' ? 'selected' : ''}`}>
-              <input 
-                type="radio" 
-                name="insuranceType" 
-                value="property_casualty" 
-                checked={insuranceType === 'property_casualty'}
-                onChange={() => setInsuranceType('property_casualty')} 
+            <label
+              className={`option ${
+                insuranceType === "property_casualty" ? "selected" : ""
+              }`}>
+              <input
+                type="radio"
+                name="insuranceType"
+                value="property_casualty"
+                checked={insuranceType === "property_casualty"}
+                onChange={() => setInsuranceType("property_casualty")}
               />
-              <span className="option-icon"><FontAwesomeIcon icon={faHome} /></span>
+              <span className="option-icon">
+                <FontAwesomeIcon icon={faHome} />
+              </span>
               <span className="option-label">Property & Casualty</span>
             </label>
           </div>
         </div>
-        
-        <div 
-          className={`file-drop-zone ${files.length > 0 ? 'has-files' : ''}`}
+
+        <div
+          className={`file-drop-zone ${files.length > 0 ? "has-files" : ""}`}
           onDrop={handleDrop}
-          onDragOver={handleDragOver}
-        >
+          onDragOver={handleDragOver}>
           <input
             type="file"
             accept=".pdf"
@@ -406,14 +509,15 @@ function UploadPage() {
           <label htmlFor="file-input" className="file-input-label">
             <FontAwesomeIcon icon={faFileMedical} size="2x" />
             <p>
-              <strong>Click to select files</strong> or drag and drop PDF files here
+              <strong>Click to select files</strong> or drag and drop PDF files
+              here
             </p>
             <p className="file-hint">
               You can select multiple PDF files at once
             </p>
           </label>
         </div>
-        
+
         {files.length > 0 && (
           <div className="selected-files">
             <h4>Selected Files ({files.length})</h4>
@@ -422,35 +526,37 @@ function UploadPage() {
                 <li key={index}>
                   {file.name}
                   {uploadProgress[file.name] && (
-                    <span className="upload-status"> - {uploadProgress[file.name]}</span>
+                    <span className="upload-status">
+                      {" "}
+                      - {uploadProgress[file.name]}
+                    </span>
                   )}
                 </li>
               ))}
             </ul>
-            <button 
+            <button
               onClick={handleUpload}
               disabled={uploading}
-              className="upload-button"
-            >
-              {uploading ? 'Uploading...' : `Analyze ${files.length} Document${files.length > 1 ? 's' : ''}`}
+              className="upload-button">
+              {uploading
+                ? "Uploading..."
+                : `Analyze ${files.length} Document${
+                    files.length > 1 ? "s" : ""
+                  }`}
             </button>
           </div>
         )}
 
-        {error && (
-          <div className="error-message">
-            {error}
-          </div>
-        )}
+        {error && <div className="error-message">{error}</div>}
       </div>
     </div>
-  )
+  );
 }
 
 // Wrapper to extract jobId from URL params
 function JobPageWrapper() {
-  const params = useParams<{ jobId: string }>()
-  return <JobPage jobId={params.jobId!} />
+  const params = useParams<{ jobId: string }>();
+  return <JobPage jobId={params.jobId!} />;
 }
 
 // Add this new type definition
@@ -458,7 +564,7 @@ interface Job {
   jobId: string;
   originalFilename: string;
   uploadTimestamp: string;
-  status: 'Complete' | 'In Progress' | 'Failed';
+  status: "Complete" | "In Progress" | "Failed";
 }
 
 // Add the JobsList component
@@ -466,41 +572,42 @@ function JobsList() {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [collapsedBatches, setCollapsedBatches] = useState<Set<string>>(new Set());
+  const [collapsedBatches, setCollapsedBatches] = useState<Set<string>>(
+    new Set()
+  );
   const navigate = useNavigate();
-  const [searchInput, setSearchInput] = useState('');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleSearch = () => {
     setSearchQuery(searchInput.trim());
   };
 
   const handleClear = () => {
-    setSearchInput('');
-    setSearchQuery('');
+    setSearchInput("");
+    setSearchQuery("");
   };
 
   const handleKeyDown = (e: any) => {
-    if (e.key === 'Enter') {
+    if (e.key === "Enter") {
       handleSearch();
     }
   };
 
   const filteredJobs = searchQuery
-  ? jobs.filter(job =>
-      job.originalFilename.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  : jobs;
-
+    ? jobs.filter((job) =>
+        job.originalFilename.toLowerCase().includes(searchQuery.toLowerCase())
+      )
+    : jobs;
 
   useEffect(() => {
     fetchJobs();
-    
+
     // Set up polling to refresh job statuses every 5 seconds
     const pollInterval = setInterval(() => {
       fetchJobs();
     }, 5000);
-    
+
     // Cleanup interval on unmount
     return () => clearInterval(pollInterval);
   }, []);
@@ -532,8 +639,8 @@ function JobsList() {
   };
 
   const getBatchTimestamp = (jobs: Job[]) => {
-    const timestamps = jobs.map(job => new Date(job.uploadTimestamp));
-    const earliest = new Date(Math.min(...timestamps.map(d => d.getTime())));
+    const timestamps = jobs.map((job) => new Date(job.uploadTimestamp));
+    const earliest = new Date(Math.min(...timestamps.map((d) => d.getTime())));
     return earliest.toLocaleString();
   };
 
@@ -547,13 +654,13 @@ function JobsList() {
           setLoading(false);
           return;
         }
-        throw new Error('Failed to fetch jobs');
+        throw new Error("Failed to fetch jobs");
       }
 
       const data = await response.json();
       setJobs(data.jobs || data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'An error occurred');
+      setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
       setLoading(false);
     }
@@ -561,24 +668,39 @@ function JobsList() {
 
   const formatDate = (timestamp: string) => {
     const date = new Date(timestamp);
-    if (isNaN(date.getTime())) return 'Invalid date';
-    return new Intl.DateTimeFormat('en-US', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
+    if (isNaN(date.getTime())) return "Invalid date";
+    return new Intl.DateTimeFormat("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
     }).format(date);
   };
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'Complete':
-        return <FontAwesomeIcon icon={faCheckCircle} className="status-icon complete" />;
-      case 'In Progress':
-        return <FontAwesomeIcon icon={faHourglassHalf} className="status-icon in-progress" />;
-      case 'Failed':
-        return <FontAwesomeIcon icon={faExclamationCircle} className="status-icon failed" />;
+      case "Complete":
+        return (
+          <FontAwesomeIcon
+            icon={faCheckCircle}
+            className="status-icon complete"
+          />
+        );
+      case "In Progress":
+        return (
+          <FontAwesomeIcon
+            icon={faHourglassHalf}
+            className="status-icon in-progress"
+          />
+        );
+      case "Failed":
+        return (
+          <FontAwesomeIcon
+            icon={faExclamationCircle}
+            className="status-icon failed"
+          />
+        );
       default:
         return null;
     }
@@ -594,7 +716,7 @@ function JobsList() {
           GenAI Underwriting Workbench
         </h1>
         <div className="header-controls">
-          <button onClick={() => navigate('/')} className="nav-button">
+          <button onClick={() => navigate("/")} className="nav-button">
             <FontAwesomeIcon icon={faFileMedical} /> Upload New
           </button>
         </div>
@@ -602,7 +724,7 @@ function JobsList() {
 
       <div className="jobs-section">
         <h2>
-          <FontAwesomeIcon icon={faList} style={{ marginRight: '10px' }} /> 
+          <FontAwesomeIcon icon={faList} style={{ marginRight: "10px" }} />
           Your Analysis Jobs
         </h2>
 
@@ -611,20 +733,14 @@ function JobsList() {
         ) : error ? (
           <div className="error-message">
             {error}
-            <button 
-              onClick={fetchJobs}
-              className="refresh-button"
-            >
+            <button onClick={fetchJobs} className="refresh-button">
               Try Again
             </button>
           </div>
         ) : jobs.length === 0 ? (
           <div className="no-jobs">
             <p>You haven't uploaded any documents yet.</p>
-            <button 
-              onClick={() => navigate('/')}
-              className="upload-button"
-            >
+            <button onClick={() => navigate("/")} className="upload-button">
               Upload Your First Document
             </button>
           </div>
@@ -632,87 +748,108 @@ function JobsList() {
           <>
             <div
               className="search-container"
-              style={{ textAlign: 'center', margin: '20px 0' }}
-            >
+              style={{ textAlign: "center", margin: "20px 0" }}>
               <input
                 type="text"
                 placeholder="Search by filename"
                 value={searchInput}
-                onChange={e => setSearchInput(e.target.value)}
+                onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                style={{ padding: '8px', width: '300px' }}
+                style={{ padding: "8px", width: "300px" }}
               />
               <button
                 onClick={handleSearch}
                 style={{
-                  padding: '8px 12px',
-                  marginLeft: '8px',
-                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                <FontAwesomeIcon icon={faSearch} style={{ marginRight: '5px' }} />
+                  padding: "8px 12px",
+                  marginLeft: "8px",
+                  background:
+                    "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}>
+                <FontAwesomeIcon
+                  icon={faSearch}
+                  style={{ marginRight: "5px" }}
+                />
                 Search
               </button>
               <button
                 onClick={handleClear}
                 style={{
-                  padding: '8px 12px',
-                  marginLeft: '8px',
-                  background: 'linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%)',
-                  color: '#333',
-                  border: 'none',
-                  borderRadius: '4px',
-                  cursor: 'pointer',
-                }}
-              >
-                <FontAwesomeIcon icon={faTimes} style={{ marginRight: '5px' }} />
+                  padding: "8px 12px",
+                  marginLeft: "8px",
+                  background:
+                    "linear-gradient(135deg, #e5e7eb 0%, #d1d5db 100%)",
+                  color: "#333",
+                  border: "none",
+                  borderRadius: "4px",
+                  cursor: "pointer",
+                }}>
+                <FontAwesomeIcon
+                  icon={faTimes}
+                  style={{ marginRight: "5px" }}
+                />
                 Clear
               </button>
             </div>
-          <div className="jobs-list">
-            {(() => {
-              const grouped = groupJobsByBatch(filteredJobs);
-              return Object.entries(grouped).map(([batchId, batchJobs]) => (
-                <div key={batchId} className="batch-container">
-                  <div className="batch-header" onClick={() => toggleBatch(batchId)}>
-                    <h3>
-                      <span className={`batch-toggle ${collapsedBatches.has(batchId) ? 'collapsed' : ''}`}>▼</span>
-                      Batch ID: {getShortBatchId(batchId)}
-                    </h3>
-                    <p>Uploaded: {getBatchTimestamp(batchJobs)} • {batchJobs.length} document{batchJobs.length !== 1 ? 's' : ''}</p>
-                  </div>
-                  {!collapsedBatches.has(batchId) && batchJobs.map(job => (
+            <div className="jobs-list">
+              {(() => {
+                const grouped = groupJobsByBatch(filteredJobs);
+                return Object.entries(grouped).map(([batchId, batchJobs]) => (
+                  <div key={batchId} className="batch-container">
                     <div
-                      key={job.jobId}
-                      className="job-card indented"
-                      onClick={() => navigate(`/jobs/${job.jobId}`)}
-                    >
-                      <div className="job-icon">
-                        <FontAwesomeIcon icon={faFileAlt} />
-                      </div>
-                      <div className="job-details">
-                        <h3 className="job-filename">{job.originalFilename}</h3>
-                        <div className="job-meta">
-                          <div className="job-date">
-                            <FontAwesomeIcon icon={faCalendarAlt} />
-                            {formatDate(job.uploadTimestamp)}
+                      className="batch-header"
+                      onClick={() => toggleBatch(batchId)}>
+                      <h3>
+                        <span
+                          className={`batch-toggle ${
+                            collapsedBatches.has(batchId) ? "collapsed" : ""
+                          }`}>
+                          ▼
+                        </span>
+                        Batch ID: {getShortBatchId(batchId)}
+                      </h3>
+                      <p>
+                        Uploaded: {getBatchTimestamp(batchJobs)} •{" "}
+                        {batchJobs.length} document
+                        {batchJobs.length !== 1 ? "s" : ""}
+                      </p>
+                    </div>
+                    {!collapsedBatches.has(batchId) &&
+                      batchJobs.map((job) => (
+                        <div
+                          key={job.jobId}
+                          className="job-card indented"
+                          onClick={() => navigate(`/jobs/${job.jobId}`)}>
+                          <div className="job-icon">
+                            <FontAwesomeIcon icon={faFileAlt} />
                           </div>
-                          <div className={`job-status ${job.status.toLowerCase().replace(' ', '-')}`}>
-                            {getStatusIcon(job.status)}
-                            {job.status}
+                          <div className="job-details">
+                            <h3 className="job-filename">
+                              {job.originalFilename}
+                            </h3>
+                            <div className="job-meta">
+                              <div className="job-date">
+                                <FontAwesomeIcon icon={faCalendarAlt} />
+                                {formatDate(job.uploadTimestamp)}
+                              </div>
+                              <div
+                                className={`job-status ${job.status
+                                  .toLowerCase()
+                                  .replace(" ", "-")}`}>
+                                {getStatusIcon(job.status)}
+                                {job.status}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ));
-            })()}
-          </div>
+                      ))}
+                  </div>
+                ));
+              })()}
+            </div>
           </>
         )}
       </div>
@@ -724,18 +861,12 @@ function App() {
   return (
     <Router>
       <Routes>
-        <Route path="/" element={
-          <UploadPage />
-        } />
-        <Route path="/jobs" element={
-          <JobsList />
-        } />
-        <Route path="/jobs/:jobId" element={
-          <JobPageWrapper />
-        } />
+        <Route path="/" element={<UploadPage />} />
+        <Route path="/jobs" element={<JobsList />} />
+        <Route path="/jobs/:jobId" element={<JobPageWrapper />} />
       </Routes>
     </Router>
-  )
+  );
 }
 
-export default App
+export default App;

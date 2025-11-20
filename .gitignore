@@ -10,7 +10,8 @@ frontend/dist
 frontend/build
 node_modules
 .cursor/
-.vscode/
+
 *.pyc
 */.venv
 */venv
+azure-version/functions/.venv/
