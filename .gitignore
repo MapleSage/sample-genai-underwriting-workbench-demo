@@ -15,3 +15,4 @@ node_modules
 */.venv
 */venv
 azure-version/functions/.venv/
+.vercel

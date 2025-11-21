@@ -2,6 +2,7 @@ import azure.functions as func
 import json
 import logging
 import os
+import uuid
 from azure.cosmos import CosmosClient
 from azure.storage.blob import BlobServiceClient, generate_blob_sas, BlobSasPermissions
 from datetime import datetime, timedelta
@@ -104,13 +105,13 @@ def handle_upload(req: func.HttpRequest, headers: dict) -> func.HttpResponse:
             upload_url = blob_client.url
         
         # Create job entry
-        job_id = f"job-{datetime.utcnow().timestamp()}"
+        job_id = f"job-{str(uuid.uuid4())}"
         job_data = {
             'id': job_id,
             'jobId': job_id,
             'filename': filename,
             'status': 'pending',
-            'createdAt': datetime.utcnow().isoformat()
+            'createdAt': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
         }
         jobs_container.create_item(job_data)
         
@@ -135,6 +136,25 @@ def handle_get_jobs(req: func.HttpRequest, headers: dict) -> func.HttpResponse:
     """Get all jobs"""
     try:
         items = list(jobs_container.read_all_items())
+        # Add frontend-compatible fields
+        for item in items:
+            if 'createdAt' in item:
+                item['uploadTimestamp'] = item['createdAt']
+                item['timestamp'] = item['createdAt']
+            if 'filename' in item:
+                item['originalFilename'] = item['filename']
+            # Add batchId - use batchJobId if exists, otherwise use jobId as single-item batch
+            if 'batchJobId' in item:
+                item['batchId'] = item['batchJobId']
+            else:
+                item['batchId'] = item.get('jobId', item.get('id', 'unknown'))
+            # Map status to frontend format
+            if item.get('status') == 'extracted':
+                item['status'] = 'Complete'
+            elif item.get('status') == 'pending':
+                item['status'] = 'In Progress'
+            elif item.get('status') == 'failed':
+                item['status'] = 'Failed'
         return func.HttpResponse(
             json.dumps({'jobs': items}),
             mimetype='application/json',
@@ -152,6 +172,24 @@ def handle_get_job(job_id: str, headers: dict) -> func.HttpResponse:
     """Get specific job"""
     try:
         item = jobs_container.read_item(job_id, partition_key=job_id)
+        # Add frontend-compatible fields
+        if 'createdAt' in item:
+            item['uploadTimestamp'] = item['createdAt']
+            item['timestamp'] = item['createdAt']
+        if 'filename' in item:
+            item['originalFilename'] = item['filename']
+        # Add batchId - use batchJobId if exists, otherwise use jobId as single-item batch
+        if 'batchJobId' in item:
+            item['batchId'] = item['batchJobId']
+        else:
+            item['batchId'] = item.get('jobId', item.get('id', 'unknown'))
+        # Map status to frontend format
+        if item.get('status') == 'extracted':
+            item['status'] = 'Complete'
+        elif item.get('status') == 'pending':
+            item['status'] = 'In Progress'
+        elif item.get('status') == 'failed':
+            item['status'] = 'Failed'
         return func.HttpResponse(
             json.dumps(item),
             mimetype='application/json',
@@ -201,7 +239,7 @@ def handle_batch_upload(req: func.HttpRequest, headers: dict) -> func.HttpRespon
         account_name = account_name_match.group(1)
         
         # Create batch job
-        batch_job_id = f"batch-{datetime.utcnow().timestamp()}"
+        batch_job_id = f"batch-{str(uuid.uuid4())}"
         
         upload_urls = []
         job_ids = []
@@ -225,7 +263,7 @@ def handle_batch_upload(req: func.HttpRequest, headers: dict) -> func.HttpRespon
             upload_url = f"{blob_client.url}?{sas_token}"
             
             # Create individual job entry
-            job_id = f"job-{datetime.utcnow().timestamp()}-{len(job_ids)}"
+            job_id = f"job-{str(uuid.uuid4())}"
             job_data = {
                 'id': job_id,
                 'jobId': job_id,
@@ -233,7 +271,7 @@ def handle_batch_upload(req: func.HttpRequest, headers: dict) -> func.HttpRespon
                 'status': 'pending',
                 'insuranceType': insurance_type,
                 'batchJobId': batch_job_id,
-                'createdAt': datetime.utcnow().isoformat()
+                'createdAt': datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%fZ')
             }
             jobs_container.create_item(job_data)
             

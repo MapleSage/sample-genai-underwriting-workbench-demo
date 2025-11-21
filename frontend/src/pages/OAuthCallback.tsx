@@ -1,17 +1,23 @@
 import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { handleOAuthCallback } from "../utils/cognitoOAuth";
+import { useOAuth } from "../contexts/OAuthContext";
 
 export const OAuthCallback = () => {
   const navigate = useNavigate();
+  const { refreshAuthState } = useOAuth();
 
   useEffect(() => {
     const processCallback = async () => {
       const tokens = await handleOAuthCallback();
 
       if (tokens) {
-        // Successfully authenticated, redirect to home
-        navigate("/", { replace: true });
+        // Successfully authenticated, refresh auth state and redirect to home
+        refreshAuthState();
+        // Small delay to ensure state is updated
+        setTimeout(() => {
+          navigate("/", { replace: true });
+        }, 100);
       } else {
         // Failed to authenticate, redirect to login
         navigate("/login", { replace: true });
@@ -19,7 +25,7 @@ export const OAuthCallback = () => {
     };
 
     processCallback();
-  }, [navigate]);
+  }, [navigate, refreshAuthState]);
 
   return (
     <div

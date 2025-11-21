@@ -12,6 +12,7 @@ interface OAuthContextType {
   signIn: () => void;
   signOut: () => void;
   getToken: () => string | null;
+  refreshAuthState: () => void;
 }
 
 const OAuthContext = createContext<OAuthContextType | undefined>(undefined);
@@ -22,8 +23,14 @@ export const OAuthProvider: React.FC<{ children: React.ReactNode }> = ({
   const [authenticated, setAuthenticated] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  const checkAuthState = () => {
+    const authState = isAuthenticated();
+    setAuthenticated(authState);
+    return authState;
+  };
+
   useEffect(() => {
-    setAuthenticated(isAuthenticated());
+    checkAuthState();
     setLoading(false);
   }, []);
 
@@ -33,10 +40,15 @@ export const OAuthProvider: React.FC<{ children: React.ReactNode }> = ({
 
   const handleSignOut = () => {
     signOut();
+    setAuthenticated(false);
   };
 
   const getToken = () => {
     return getIdToken();
+  };
+
+  const refreshAuthState = () => {
+    checkAuthState();
   };
 
   return (
@@ -47,6 +59,7 @@ export const OAuthProvider: React.FC<{ children: React.ReactNode }> = ({
         signIn: handleSignIn,
         signOut: handleSignOut,
         getToken,
+        refreshAuthState,
       }}>
       {children}
     </OAuthContext.Provider>

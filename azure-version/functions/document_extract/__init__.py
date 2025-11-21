@@ -27,15 +27,20 @@ openai_client = AzureOpenAI(
     azure_endpoint=os.environ.get('AZURE_OPENAI_ENDPOINT')
 )
 
-def main(myblob: func.InputStream):
-    logging.info(f"Processing blob: {myblob.name}")
+def main(event: func.EventGridEvent):
+    logging.info(f"Processing Event Grid event: {event.get_json()}")
+    
+    # Get blob info from event
+    event_data = event.get_json()
+    blob_url = event_data['url']
+    filename = blob_url.split('/')[-1]
+    
+    logging.info(f"Processing blob: {filename}")
     
     try:
-        # Extract job ID from blob name
-        filename = myblob.name.split('/')[-1]
-        
-        # Read PDF
-        pdf_content = myblob.read()
+        # Download blob
+        blob_client = blob_service_client.get_blob_client('documents', filename)
+        pdf_content = blob_client.download_blob().readall()
         pdf_reader = PdfReader(io.BytesIO(pdf_content))
         
         extracted_data = []
