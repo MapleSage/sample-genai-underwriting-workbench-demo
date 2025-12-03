@@ -1,0 +1,356 @@
+---
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: underwriting
+  labels:
+    name: underwriting
+
+---
+# ConfigMap for application configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: uw-config
+  namespace: underwriting
+data:
+  AZURE_TENANT_ID: "your-tenant-id"
+  AZURE_SUBSCRIPTION_ID: "your-subscription-id"
+  COSMOS_DB_ENDPOINT: "https://your-cosmos-account.documents.azure.com:443/"
+  COSMOS_DB_NAME: "underwriting"
+  COSMOS_JOBS_CONTAINER: "jobs"
+  STORAGE_ACCOUNT_NAME: "your-storage-account"
+  STORAGE_CONTAINER_NAME: "documents"
+  SERVICE_BUS_NAMESPACE: "your-servicebus-namespace"
+  SERVICE_BUS_QUEUE_NAME: "document-extraction"
+  OPENAI_API_VERSION: "2024-02-15-preview"
+  LOG_LEVEL: "INFO"
+
+---
+# Secret for sensitive data (must be created separately)
+apiVersion: v1
+kind: Secret
+metadata:
+  name: uw-secrets
+  namespace: underwriting
+type: Opaque
+data:
+  # Base64 encoded secrets - REPLACE WITH ACTUAL VALUES
+  OPENAI_API_KEY: "your-base64-encoded-key"
+  COSMOS_DB_KEY: "your-base64-encoded-key"
+  SERVICE_BUS_CONNECTION_STRING: "your-base64-encoded-connection-string"
+
+---
+# ServiceAccount with Workload Identity annotation
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: underwriting-workload-sa
+  namespace: underwriting
+  annotations:
+    azure.workload.identity/client-id: "your-workload-identity-client-id"
+    azure.workload.identity/tenant-id: "your-tenant-id"
+
+---
+# NetworkPolicy for security
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: uw-network-policy
+  namespace: underwriting
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: underwriting
+      ports:
+        - protocol: TCP
+          port: 8080
+        - protocol: TCP
+          port: 8081
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Allow DNS
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: UDP
+          port: 53
+    # Allow outbound to Azure services
+    - to:
+        - podSelector: {}
+    # Allow external egress
+    - to:
+        - namespaceSelector: {}
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 8443
+
+---
+# API Handler Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-handler
+  namespace: underwriting
+  labels:
+    app: api-handler
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: api-handler
+  template:
+    metadata:
+      labels:
+        app: api-handler
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: underwriting-workload-sa
+      containers:
+        - name: api
+          image: your-acr-name.azurecr.io/uw/api:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['azure.workload.identity/client-id']
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uw-secrets
+                  key: OPENAI_API_KEY
+            - name: COSMOS_DB_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uw-secrets
+                  key: COSMOS_DB_KEY
+          envFrom:
+            - configMapRef:
+                name: uw-config
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: app
+                      operator: In
+                      values:
+                        - api-handler
+                topologyKey: kubernetes.io/hostname
+
+---
+# Document Extract Worker Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-extract
+  namespace: underwriting
+  labels:
+    app: document-extract
+    version: v1
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: document-extract
+  template:
+    metadata:
+      labels:
+        app: document-extract
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: underwriting-workload-sa
+      containers:
+        - name: worker
+          image: your-acr-name.azurecr.io/uw/worker:latest
+          imagePullPolicy: Always
+          env:
+            - name: AZURE_CLIENT_ID
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.annotations['azure.workload.identity/client-id']
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uw-secrets
+                  key: OPENAI_API_KEY
+            - name: COSMOS_DB_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uw-secrets
+                  key: COSMOS_DB_KEY
+            - name: SERVICE_BUS_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: uw-secrets
+                  key: SERVICE_BUS_CONNECTION_STRING
+          envFrom:
+            - configMapRef:
+                name: uw-config
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "[ -f /tmp/worker_alive ] && find /tmp -name 'worker_alive' -mmin -2 > /dev/null"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+
+---
+# ClusterIP Service for API
+apiVersion: v1
+kind: Service
+metadata:
+  name: api-handler-svc
+  namespace: underwriting
+  labels:
+    app: api-handler
+spec:
+  type: ClusterIP
+  selector:
+    app: api-handler
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+      protocol: TCP
+
+---
+# Ingress for API Handler
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: uw-api-ingress
+  namespace: underwriting
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  tls:
+    - hosts:
+        - your-domain.com
+      secretName: api-tls-cert
+  rules:
+    - host: your-domain.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: api-handler-svc
+                port:
+                  number: 80
+
+---
+# KEDA ScaledObject for worker autoscaling based on Service Bus queue depth
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: document-extract-scaler
+  namespace: underwriting
+spec:
+  scaleTargetRef:
+    name: document-extract
+  minReplicaCount: 2
+  maxReplicaCount: 20
+  triggers:
+    - type: azure-servicebus
+      metadata:
+        namespace: your-servicebus-namespace
+        queueName: document-extraction
+        connectionFromEnv: SERVICE_BUS_CONNECTION_STRING
+        messageCount: "5"

@@ -1,0 +1,37 @@
+subscription_id = "your-subscription-id"
+
+resource_group_name = "uw-workbench-aks-rg"
+
+location = "eastus"
+
+environment = "prod"
+
+project_name = "uw-workbench"
+
+kubernetes_version = "1.28"
+
+aks_node_count = 3
+
+aks_min_node_count = 2
+
+aks_max_node_count = 10
+
+aks_vm_size = "Standard_D3_v2"
+
+storage_account_tier = "Standard"
+
+storage_account_replication_type = "LRS"
+
+cosmos_db_tier = "Standard"
+
+cosmos_db_autopilot_throughput = 4000
+
+acr_sku = "Standard"
+
+log_analytics_retention_in_days = 30
+
+tags = {
+  ManagedBy = "Terraform"
+  Project   = "Underwriting-Workbench"
+  CostCenter = "Engineering"
+}
