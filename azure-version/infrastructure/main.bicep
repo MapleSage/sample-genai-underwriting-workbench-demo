@@ -95,6 +95,8 @@ resource jobsContainer 'Microsoft.DocumentDB/databaseAccounts/sqlDatabases/conta
         paths: ['/jobId']
         kind: 'Hash'
       }
+      // Keep job metadata for 30 days to limit storage and allow autoscale
+      defaultTtl: 2592000
     }
   }
 }
@@ -115,6 +117,9 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
   name: functionAppName
   location: location
   kind: 'functionapp'
+  identity: {
+    type: 'SystemAssigned'
+  }
   properties: {
     serverFarmId: appServicePlan.id
     siteConfig: {
@@ -140,6 +145,10 @@ resource functionApp 'Microsoft.Web/sites@2023-01-01' = {
           value: listKeys(cosmosDbAccount.id, cosmosDbAccount.apiVersion).primaryMasterKey
         }
         {
+          name: 'STORAGE_ACCOUNT_NAME'
+          value: storageAccount.name
+        }
+        {
           name: 'STORAGE_CONNECTION_STRING'
           value: 'DefaultEndpointsProtocol=https;AccountName=${storageAccount.name};EndpointSuffix=${environment().suffixes.storage};AccountKey=${listKeys(storageAccount.id, storageAccount.apiVersion).keys[0].value}'
         }
@@ -158,6 +167,44 @@ resource staticWebApp 'Microsoft.Web/staticSites@2023-01-01' = {
     tier: 'Free'
   }
   properties: {}
+}
+
+// Event Grid System Topic for Storage Account
+resource eventGridSystemTopic 'Microsoft.EventGrid/systemTopics@2023-12-15-preview' = {
+  name: 'uw-storage-events-${uniqueSuffix}'
+  location: location
+  properties: {
+    source: storageAccount.id
+    topicType: 'Microsoft.Storage.StorageAccounts'
+  }
+}
+
+// Event Grid Subscription to trigger document extraction
+resource eventGridSubscription 'Microsoft.EventGrid/systemTopics/eventSubscriptions@2023-12-15-preview' = {
+  parent: eventGridSystemTopic
+  name: 'document-upload-subscription'
+  properties: {
+    destination: {
+      endpointType: 'AzureFunction'
+      properties: {
+        resourceId: '${functionApp.id}/functions/document_extract'
+        maxEventsPerBatch: 1
+        preferredBatchSizeInKilobytes: 64
+      }
+    }
+    filter: {
+      includedEventTypes: [
+        'Microsoft.Storage.BlobCreated'
+      ]
+      subjectBeginsWith: '/blobServices/default/containers/documents/'
+      subjectEndsWith: '.pdf'
+    }
+    eventDeliverySchema: 'EventGridSchema'
+    retryPolicy: {
+      maxDeliveryAttempts: 30
+      eventTimeToLiveInMinutes: 1440
+    }
+  }
 }
 
 // Outputs

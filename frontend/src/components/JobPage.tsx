@@ -413,6 +413,12 @@ const STATUS_MAPPING = {
     details:
       "The AI agent is making decisions and taking appropriate actions based on the analysis results...",
   },
+  "In Progress": {
+    step: 2,
+    phase: "Processing",
+    details:
+      "Document is being processed. This may take a few moments...",
+  },
   COMPLETE: {
     step: 5,
     phase: "Complete",

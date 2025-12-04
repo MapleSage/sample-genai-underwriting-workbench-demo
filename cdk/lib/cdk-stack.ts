@@ -17,6 +17,9 @@ import * as path from 'path';
 import { NagSuppressions } from 'cdk-nag';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as wafv2 from 'aws-cdk-lib/aws-wafv2';
+import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+
 
 export class CdkStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -99,6 +102,20 @@ export class CdkStack extends cdk.Stack {
       autoDeleteObjects: true,
     });
 
+    // Create S3 bucket for archived jobs
+    const archiveBucket = new s3.Bucket(this, 'ArchiveBucket', {
+      bucketName: cdk.Fn.join('-', ['ai-underwriting', cdk.Aws.ACCOUNT_ID, 'archive']),
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      versioned: true,
+      removalPolicy: cdk.RemovalPolicy.DESTROY, // For development - change for production
+      autoDeleteObjects: true,
+      lifecycleRules: [
+        {
+          expiration: cdk.Duration.days(90), // Auto-delete archived jobs after 90 days
+        },
+      ],
+    });
+
     // Create Lambda Layers
     const pillowLayer = new lambda.LayerVersion(this, 'PillowLayer', {
       code: lambda.Code.fromAsset('lambda-layers/pillow-py312.zip'),
@@ -161,7 +178,9 @@ export class CdkStack extends cdk.Stack {
         extractionBucket.arnForObjects('*'),
         extractionBucket.bucketArn,
         mockOutputBucket.arnForObjects('*'),
-        mockOutputBucket.bucketArn
+        mockOutputBucket.bucketArn,
+        archiveBucket.arnForObjects('*'),
+        archiveBucket.bucketArn
       ],
       actions: [
         's3:PutObject',
@@ -172,7 +191,7 @@ export class CdkStack extends cdk.Stack {
     });
 
     // Create Lambda Functions
-    
+
     // 1. API Handler Lambda
     const apiHandlerLambda = new lambda.Function(this, 'ApiHandlerLambda', {
       functionName: 'ai-underwriting-api-handler',
@@ -283,6 +302,22 @@ export class CdkStack extends cdk.Stack {
       layers: [boto3Layer],
     });
 
+    // 8. Cleanup Lambda - Archives and deletes old completed jobs
+    const cleanupLambda = new lambda.Function(this, 'CleanupLambda', {
+      functionName: 'ai-underwriting-cleanup-jobs',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromAsset('lambda-functions/cleanup-jobs'),
+      handler: 'index.lambda_handler',
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 256,
+      environment: {
+        JOBS_TABLE_NAME: jobsTable.tableName,
+        ARCHIVE_BUCKET: archiveBucket.bucketName,
+        RETENTION_DAYS: '7', // Archive jobs older than 7 days
+      },
+      layers: [boto3Layer],
+    });
+
     // Add permissions to Lambda functions
     apiHandlerLambda.addToRolePolicy(dynamodbPolicyStatement);
     apiHandlerLambda.addToRolePolicy(s3PolicyStatement);
@@ -309,6 +344,16 @@ export class CdkStack extends cdk.Stack {
 
     chatLambda.addToRolePolicy(bedrockPolicyStatement);
     chatLambda.addToRolePolicy(dynamodbPolicyStatement);
+
+    cleanupLambda.addToRolePolicy(dynamodbPolicyStatement);
+    cleanupLambda.addToRolePolicy(s3PolicyStatement);
+
+    // Schedule cleanup Lambda to run daily at 2 AM UTC
+    const cleanupRule = new events.Rule(this, 'CleanupScheduleRule', {
+      schedule: events.Schedule.cron({ minute: '0', hour: '2' }),
+      description: 'Trigger cleanup Lambda daily to archive and delete old jobs',
+    });
+    cleanupRule.addTarget(new eventTargets.LambdaFunction(cleanupLambda));
 
     // Create Step Functions State Machine
     const classifyStep = new stepfunctionsTasks.LambdaInvoke(this, 'ClassifyDocument', {
@@ -346,7 +391,7 @@ export class CdkStack extends cdk.Stack {
       lambdaFunction: bedrockExtractLambda,
       payloadResponseOnly: true,
       resultSelector: {
-        'pages.$':  '$.pages',
+        'pages.$': '$.pages',
         'chunkS3Key.$': '$.chunkS3Key'
       },
       resultPath: '$',
@@ -370,13 +415,13 @@ export class CdkStack extends cdk.Stack {
       .next(parallelExtract)
       .next(analyzeStep)
       .next(actStep);
-      
+
     // Create a log group for the state machine
     const logGroup = new logs.LogGroup(this, 'DocumentProcessingLogGroup', {
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
-    
+
     const stateMachine = new stepfunctions.StateMachine(this, 'DocumentProcessingWorkflow', {
       stateMachineName: 'ai-underwriting-workflow',
       definitionBody: stepfunctions.DefinitionBody.fromChainable(classifyStep),
@@ -394,8 +439,51 @@ export class CdkStack extends cdk.Stack {
     // Update ApiHandlerLambda with the state machine ARN
     apiHandlerLambda.addEnvironment('STATE_MACHINE_ARN', stateMachine.stateMachineArn);
 
-    // Create EventBridge Rule to trigger Step Functions on S3 object creation
+    // ========================================
+    // PRIMARY SOLUTION: S3 Event Notification → Trigger Lambda → Step Functions
+    // ========================================
+
+    // Create Lambda to trigger Step Functions workflow
+    const triggerWorkflowLambda = new lambda.Function(this, 'TriggerWorkflowLambda', {
+      functionName: 'ai-underwriting-trigger-workflow',
+      runtime: lambda.Runtime.PYTHON_3_12,
+      code: lambda.Code.fromAsset('lambda-functions/trigger-workflow'),
+      handler: 'index.lambda_handler',
+      timeout: cdk.Duration.seconds(30),
+      memorySize: 256,
+      environment: {
+        STATE_MACHINE_ARN: stateMachine.stateMachineArn,
+      },
+      layers: [boto3Layer],
+      description: 'Triggers Step Functions workflow when PDFs are uploaded to S3',
+    });
+
+    // Grant permission to start Step Functions executions
+    stateMachine.grantStartExecution(triggerWorkflowLambda);
+
+    // Add S3 event notification to trigger the Lambda
+    documentBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(triggerWorkflowLambda),
+      { prefix: 'uploads/', suffix: '.pdf' }
+    );
+
+    // ========================================
+    // DIAGNOSTIC: EventBridge Rule (Disabled, for debugging)
+    // ========================================
+
+    // Create CloudWatch Logs for EventBridge debugging
+    const eventBridgeLogGroup = new logs.LogGroup(this, 'EventBridgeLogGroup', {
+      logGroupName: '/aws/events/s3-upload-rule',
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // Create EventBridge Rule (disabled, kept for debugging)
     const rule = new events.Rule(this, 'S3UploadRule', {
+      ruleName: 'ai-underwriting-s3-upload-eventbridge',
+      description: 'EventBridge rule for S3 uploads (disabled - using S3 notifications instead)',
+      enabled: false,  // Disabled - using S3 event notifications instead
       eventPattern: {
         source: ['aws.s3'],
         detailType: ['Object Created'],
@@ -405,13 +493,16 @@ export class CdkStack extends cdk.Stack {
           },
           object: {
             key: [{ prefix: 'uploads/' }],
-            size: [{ numeric: ['>', 0] }], // Only trigger for actual files with size > 0
+            size: [{ numeric: ['>', 0] }],
           },
         },
       },
     });
-    
-    // Add EventBridge rule target with input transformer
+
+    // Add CloudWatch Logs as target for debugging (even when disabled)
+    rule.addTarget(new eventTargets.CloudWatchLogGroup(eventBridgeLogGroup));
+
+    // Add EventBridge rule target with input transformer (for when we re-enable it)
     rule.addTarget(new eventTargets.SfnStateMachine(stateMachine, {
       input: events.RuleTargetInput.fromObject({
         detail: {
@@ -425,6 +516,37 @@ export class CdkStack extends cdk.Stack {
         classification: 'OTHER'
       }),
     }));
+
+    // ========================================
+    // MONITORING: CloudWatch Alarms
+    // ========================================
+
+    // Add CloudWatch alarm for failed Step Functions executions
+    const failedExecutionsAlarm = new cloudwatch.Alarm(this, 'FailedExecutionsAlarm', {
+      alarmName: 'ai-underwriting-workflow-failures',
+      alarmDescription: 'Alert when Step Functions workflow execution fails',
+      metric: stateMachine.metricFailed({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // Add CloudWatch alarm for trigger Lambda errors
+    const triggerLambdaErrorAlarm = new cloudwatch.Alarm(this, 'TriggerLambdaErrorAlarm', {
+      alarmName: 'ai-underwriting-trigger-lambda-errors',
+      alarmDescription: 'Alert when trigger Lambda function encounters errors',
+      metric: triggerWorkflowLambda.metricErrors({
+        period: cdk.Duration.minutes(5),
+        statistic: 'Sum',
+      }),
+      threshold: 1,
+      evaluationPeriods: 1,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
 
     // Create access logs for API Gateway
     const apiAccessLogGroup = new logs.LogGroup(this, 'ApiAccessLogGroup', {
@@ -473,19 +595,19 @@ export class CdkStack extends cdk.Stack {
 
     // Create API Gateway Resources following the /api/... pattern
     const apiResource = api.root.addResource('api');
-    
+
     // Documents resources
     const documentsResource = apiResource.addResource('documents');
     const uploadResource = documentsResource.addResource('upload');
     const batchUploadResource = documentsResource.addResource('batch-upload');
     const statusParentResource = documentsResource.addResource('status');
     const statusResource = statusParentResource.addResource('{executionArn}');
-    
+
     // Jobs resources
     const jobsResource = apiResource.addResource('jobs');
     const jobByIdResource = jobsResource.addResource('{jobId}');
     const documentUrlResource = jobByIdResource.addResource('document-url');
-    
+
     // Chat resources
     const chatResource = apiResource.addResource('chat');
     const chatByJobIdResource = chatResource.addResource('{jobId}');
@@ -523,7 +645,7 @@ export class CdkStack extends cdk.Stack {
       addresses: []
     });
 
-   // Create WAFv2 Web ACL for CloudFront distribution
+    // Create WAFv2 Web ACL for CloudFront distribution
     const webAcl = new wafv2.CfnWebACL(this, 'WhitelistIPSetWebAcl', {
       name: 'WhitelistIPSetWebAcl',
       scope: 'CLOUDFRONT',
@@ -616,44 +738,54 @@ export class CdkStack extends cdk.Stack {
     NagSuppressions.addResourceSuppressions(documentBucket, [{
       id: 'AwsSolutions-S3-1',
       reason: 'Using wildcard for simplicity in development. Will be restricted in production.',
-    },{
+    }, {
       id: 'AwsSolutions-S1',
       reason: 'S3 bucket server access logging is not enabled for development. Will be enabled in production.',
-    },{
+    }, {
       id: 'AwsSolutions-S10',
       reason: 'S3 bucket or bucket policy does not require SSL requests. This is for development purposes. Will be enforced in production.',
     }]);
     NagSuppressions.addResourceSuppressions(mockOutputBucket, [{
       id: 'AwsSolutions-S3-1',
       reason: 'Using wildcard for simplicity in development. Will be restricted in production.',
-    },{
+    }, {
       id: 'AwsSolutions-S1',
       reason: 'S3 bucket server access logging is not enabled for development. Will be enabled in production.',
-    },{
+    }, {
+      id: 'AwsSolutions-S10',
+      reason: 'S3 bucket or bucket policy does not require SSL requests. This is for development purposes. Will be enforced in production.',
+    }]);
+    NagSuppressions.addResourceSuppressions(archiveBucket, [{
+      id: 'AwsSolutions-S3-1',
+      reason: 'Using wildcard for simplicity in development. Will be restricted in production.',
+    }, {
+      id: 'AwsSolutions-S1',
+      reason: 'S3 bucket server access logging is not enabled for development. Will be enabled in production.',
+    }, {
       id: 'AwsSolutions-S10',
       reason: 'S3 bucket or bucket policy does not require SSL requests. This is for development purposes. Will be enforced in production.',
     }]);
     NagSuppressions.addResourceSuppressions(extractionBucket, [{
       id: 'AwsSolutions-S3-1',
       reason: 'Using wildcard for simplicity in development. Will be restricted in production.',
-    },{
+    }, {
       id: 'AwsSolutions-S1',
       reason: 'S3 bucket server access logging is not enabled for development. Will be enabled in production.',
-    },{
+    }, {
       id: 'AwsSolutions-S10',
       reason: 'S3 bucket or bucket policy does not require SSL requests. This is for development purposes. Will be enforced in production.',
     }]);
     NagSuppressions.addResourceSuppressions(websiteBucket, [{
       id: 'AwsSolutions-S3-1',
       reason: 'Using wildcard for simplicity in development. Will be restricted in production.',
-    },{
+    }, {
       id: 'AwsSolutions-S1',
       reason: 'S3 bucket server access logging is not enabled for development. Will be enabled in production.',
-    },{
+    }, {
       id: 'AwsSolutions-S10',
       reason: 'S3 bucket or bucket policy does not require SSL requests. This is for development purposes. Will be enforced in production.',
     }]);
-    
+
     // Add specific suppression for DocumentBucket Policy Resource
     NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/DocumentBucket/Policy/Resource', [{
       id: 'AwsSolutions-S10',
@@ -667,6 +799,10 @@ export class CdkStack extends cdk.Stack {
       id: 'AwsSolutions-S10',
       reason: 'S3 bucket policy does not require SSL requests. This is for development purposes. Will be enforced in production.',
     }]);
+    NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/ArchiveBucket/Policy/Resource', [{
+      id: 'AwsSolutions-S10',
+      reason: 'S3 bucket policy does not require SSL requests. This is for development purposes. Will be enforced in production.',
+    }]);
     NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/WebsiteBucket/Policy/Resource', [{
       id: 'AwsSolutions-S10',
       reason: 'S3 bucket policy does not require SSL requests. This is for development purposes. Will be enforced in production.',
@@ -676,10 +812,10 @@ export class CdkStack extends cdk.Stack {
     NagSuppressions.addResourceSuppressions(jobsTable, [{
       id: 'AwsSolutions-DDB1',
       reason: 'Using default partition key for simplicity in development. Will be updated in production.',
-    },{
+    }, {
       id: 'AwsSolutions-DDB2',
       reason: 'DynamoDB table does not have point-in-time recovery enabled for development. Will be enabled in production.',
-    },{
+    }, {
       id: 'AwsSolutions-DDB3',
       reason: 'DynamoDB table does not have point-in-time recovery enabled for development. Will be enabled in production.',
     }]);
@@ -700,7 +836,7 @@ export class CdkStack extends cdk.Stack {
     NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/ApiHandlerLambda/ServiceRole/Resource', [{
       id: 'AwsSolutions-IAM4',
       reason: 'Lambda requires basic execution role for CloudWatch Logs access. This is acceptable for this demo.',
-    }, ]);
+    },]);
 
     // Add suppression for ApiHandlerLambda DefaultPolicy wildcard permissions
     NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/ApiHandlerLambda/ServiceRole/DefaultPolicy/Resource', [{
@@ -745,12 +881,21 @@ export class CdkStack extends cdk.Stack {
       id: 'AwsSolutions-L1',
       reason: 'Using Python 3.12 which is the latest available runtime for this project.',
     }]);
+    NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/CleanupLambda/Resource', [{
+      id: 'AwsSolutions-L1',
+      reason: 'Using Python 3.12 which is the latest available runtime for this project.',
+    }]);
     NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/BatchGeneratorLambda/Resource', [
       {
         id: 'AwsSolutions-L1',
         reason: 'Using Python 3.12 which is the latest available runtime for this project.',
       },
     ]);
+    NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/TriggerWorkflowLambda/Resource', [{
+      id: 'AwsSolutions-L1',
+      reason: 'Using Python 3.12 which is the latest available runtime for this project.',
+    }]);
+
 
     // Add suppression for Lambda functions using AWS managed policy
     NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/ClassifyLambda/ServiceRole/Resource', [{
@@ -779,6 +924,11 @@ export class CdkStack extends cdk.Stack {
         reason: 'Lambda requires basic execution role for CloudWatch Logs access. This is acceptable for this demo.',
       },
     ]);
+    NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/TriggerWorkflowLambda/ServiceRole/Resource', [{
+      id: 'AwsSolutions-IAM4',
+      reason: 'Lambda requires basic execution role for CloudWatch Logs access. This is acceptable for this demo.',
+    }]);
+
 
 
     // Add suppression for Lambda function DefaultPolicy wildcard permissions
@@ -808,6 +958,11 @@ export class CdkStack extends cdk.Stack {
         reason: 'Lambda needs access to Bedrock, DynamoDB table indexes and S3 bucket objects. This is acceptable for this demo.',
       },
     ]);
+    NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/TriggerWorkflowLambda/ServiceRole/DefaultPolicy/Resource', [{
+      id: 'AwsSolutions-IAM5',
+      reason: 'Lambda needs to start Step Functions executions. This is acceptable for this demo.',
+    }]);
+
 
     // Add suppression for Step Function Role DefaultPolicy wildcard permissions
     NagSuppressions.addResourceSuppressionsByPath(this, '/AWS-GENAI-UW-DEMO/DocumentProcessingWorkflow/Role/DefaultPolicy/Resource', [{

@@ -1,8 +1,4 @@
 azure-functions
 azure-storage-blob
 azure-cosmos
-openai
-pypdf
-Pillow
-python-dotenv
 azure-identity

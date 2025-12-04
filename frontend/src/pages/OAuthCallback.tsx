@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { handleOAuthCallback } from "../utils/cognitoOAuth";
 import { useOAuth } from "../contexts/OAuthContext";
@@ -6,8 +6,15 @@ import { useOAuth } from "../contexts/OAuthContext";
 export const OAuthCallback = () => {
   const navigate = useNavigate();
   const { refreshAuthState } = useOAuth();
+  const hasProcessed = useRef(false);
 
   useEffect(() => {
+    // Prevent double execution
+    if (hasProcessed.current) {
+      return;
+    }
+    hasProcessed.current = true;
+
     const processCallback = async () => {
       const tokens = await handleOAuthCallback();
 

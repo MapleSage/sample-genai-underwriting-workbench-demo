@@ -1,0 +1,27 @@
+name: Build and Deploy to AKS
+
+on:
+  push:
+    name: Build and Deploy to AKS
+
+    on:
+      push:
+        branches:
+          - main
+        paths:
+          - 'azure-version/functions/**'
+          - 'Dockerfile.*'
+          - 'k8s/**'
+          name: Placeholder corrupted workflow
+
+          on:
+            workflow_dispatch:
+
+          jobs:
+            placeholder:
+              runs-on: ubuntu-latest
+              steps:
+                - name: Notice
+                  run: |
+                    echo "This workflow file was corrupted. Use .github/workflows/aks-deploy.fixed.yml as the corrected workflow or replace this file with a valid workflow."
+        permissions:

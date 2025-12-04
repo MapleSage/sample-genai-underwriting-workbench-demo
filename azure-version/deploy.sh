@@ -74,7 +74,9 @@ az functionapp config appsettings set \
     --settings \
     "AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT}" \
     "AZURE_OPENAI_KEY=${AZURE_OPENAI_KEY}" \
-    "AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4}"
+    "AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4}" \
+    "FUNCTIONS_EXTENSION_VERSION=~4" \
+    "STORAGE_ACCOUNT_NAME=${STORAGE_ACCOUNT_NAME}"
 
 # Deploy functions
 func azure functionapp publish "$FUNCTION_APP_NAME" --python
