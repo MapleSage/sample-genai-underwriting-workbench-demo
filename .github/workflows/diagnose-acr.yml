@@ -1,0 +1,37 @@
+name: Diagnose ACR
+
+on:
+  workflow_dispatch:
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure Login
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Show subscription
+        run: az account show
+
+      - name: List ACRs in subscription
+        run: |
+          echo "=== ACR list ==="
+          az acr list --query "[].{name:name,resourceGroup:resourceGroup,loginServer:loginServer}" -o table || true
+
+      - name: Show `uwworkbenchacr` (if exists)
+        run: |
+          echo "=== ACR show uwworkbenchacr ==="
+          az acr show --name uwworkbenchacr -o json || echo "uwworkbenchacr not found"
+
+      - name: Check health for `uwworkbenchacr`
+        run: |
+          echo "=== ACR health for uwworkbenchacr ==="
+          az acr check-health -n uwworkbenchacr --yes || echo "acr check failed or registry not reachable"
