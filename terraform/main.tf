@@ -124,7 +124,7 @@ resource "azurerm_federated_identity_credential" "workload" {
   name                = "workload-credential"
   resource_group_name = azurerm_resource_group.rg.name
   audience            = ["api://AzureADTokenExchange"]
-  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_enabled ? azurerm_kubernetes_cluster.aks.oidc_issuer[0].issuer : ""
+  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_enabled ? azurerm_kubernetes_cluster.aks.oidc_issuer_url : ""
   parent_id           = azurerm_user_assigned_identity.workload.id
   subject             = "system:serviceaccount:underwriting:underwriting-workload-sa"
 
@@ -216,7 +216,7 @@ resource "azurerm_cosmosdb_sql_container" "jobs" {
   resource_group_name = azurerm_resource_group.rg.name
   account_name        = azurerm_cosmosdb_account.cosmos.name
   database_name       = azurerm_cosmosdb_sql_database.underwriting.name
-  partition_key_path  = "/id"
+  partition_key_paths = ["/id"]
 
   autoscale_settings {
     max_throughput = var.cosmos_db_autopilot_throughput
@@ -295,13 +295,16 @@ resource "azurerm_eventgrid_system_topic_event_subscription" "blob_to_queue" {
 
   event_delivery_schema = "EventGridSchema"
 
-  filter {
-    subject_begins_with = "/blobServices/default/containers/documents"
-    subject_ends_with   = ""
-    included_event_types = ["Microsoft.Storage.BlobCreated"]
+  advanced_filter {
+    string_begins_with {
+      key   = "subject"
+      value = "/blobServices/default/containers/documents"
+    }
   }
 
-  service_bus_queue_endpoint_properties {
+  included_event_types = ["Microsoft.Storage.BlobCreated"]
+
+  service_bus_queue_endpoint {
     resource_id = azurerm_servicebus_queue.extraction_queue.id
   }
 

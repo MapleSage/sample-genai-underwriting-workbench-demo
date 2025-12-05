@@ -15,7 +15,7 @@ output "aks_kube_config" {
 }
 
 output "aks_oidc_issuer_url" {
-  value       = try(azurerm_kubernetes_cluster.aks.oidc_issuer[0].issuer, null)
+  value       = try(azurerm_kubernetes_cluster.aks.oidc_issuer_url, null)
   description = "OIDC issuer URL for Workload Identity"
 }
 
