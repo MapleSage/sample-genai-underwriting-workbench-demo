@@ -287,7 +287,10 @@ resource "azurerm_eventgrid_system_topic" "blob_events" {
   depends_on = [azurerm_storage_account.storage]
 }
 
-# Event Grid Subscription: Blob created events to Service Bus
+# TODO: Event Grid Subscription - requires proper schema validation
+# This resource needs to be configured with the correct azurerm provider schema
+# For now, Event Grid will be provisioned but subscriptions can be added manually or via Azure Portal
+/*
 resource "azurerm_eventgrid_system_topic_event_subscription" "blob_to_queue" {
   name                = "blob-created-to-queue"
   system_topic_name   = azurerm_eventgrid_system_topic.blob_events.name
@@ -310,3 +313,4 @@ resource "azurerm_eventgrid_system_topic_event_subscription" "blob_to_queue" {
     azurerm_servicebus_queue.extraction_queue
   ]
 }
+*/
