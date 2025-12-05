@@ -23,6 +23,12 @@ jobs:
         with:
           creds: ${{ secrets.AZURE_CREDENTIALS }}
 
+      - name: Get Subscription ID
+        id: subscriptionid
+        run: |
+          SUB_ID=$(az account show --query id -o tsv)
+          echo "subscription_id=$SUB_ID" >> $GITHUB_OUTPUT
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v2
         with:
@@ -35,7 +41,8 @@ jobs:
       - name: Terraform Plan
         working-directory: ./terraform
         run: |
-          terraform plan -out=plan.tfplan -input=false
+          terraform plan -out=plan.tfplan -input=false \
+            -var="subscription_id=${{ steps.subscriptionid.outputs.subscription_id }}"
 
       - name: Save plan artifact
         if: always()
@@ -48,4 +55,4 @@ jobs:
         if: ${{ github.event.inputs.apply == 'true' }}
         working-directory: ./terraform
         run: |
-          terraform apply -input=false plan.tfplan
+          terraform apply -input=false -var="subscription_id=${{ steps.subscriptionid.outputs.subscription_id }}" plan.tfplan
