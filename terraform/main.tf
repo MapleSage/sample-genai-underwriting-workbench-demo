@@ -290,21 +290,18 @@ resource "azurerm_eventgrid_system_topic" "blob_events" {
 # Event Grid Subscription: Blob created events to Service Bus
 resource "azurerm_eventgrid_system_topic_event_subscription" "blob_to_queue" {
   name                = "blob-created-to-queue"
-  system_topic        = azurerm_eventgrid_system_topic.blob_events.name
+  system_topic_name   = azurerm_eventgrid_system_topic.blob_events.name
   resource_group_name = azurerm_resource_group.rg.name
 
   event_delivery_schema = "EventGridSchema"
 
-  advanced_filter {
-    string_begins_with {
-      key   = "subject"
-      value = "/blobServices/default/containers/documents"
-    }
+  subject_filter {
+    subject_begins_with = "/blobServices/default/containers/documents"
   }
 
   included_event_types = ["Microsoft.Storage.BlobCreated"]
 
-  service_bus_queue_endpoint {
+  service_bus_queue_endpoint_properties {
     resource_id = azurerm_servicebus_queue.extraction_queue.id
   }
 
