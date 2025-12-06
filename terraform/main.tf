@@ -85,7 +85,7 @@ resource "azurerm_kubernetes_cluster" "aks" {
   default_node_pool {
     name                = "default"
     node_count          = var.aks_node_count
-    vm_size             = var.aks_vm_size
+    vm_size             = "Standard_D4s_v3"
     enable_auto_scaling = true
     min_count           = var.aks_min_node_count
     max_count           = var.aks_max_node_count
@@ -124,7 +124,7 @@ resource "azurerm_federated_identity_credential" "workload" {
   name                = "workload-credential"
   resource_group_name = azurerm_resource_group.rg.name
   audience            = ["api://AzureADTokenExchange"]
-  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_enabled ? azurerm_kubernetes_cluster.aks.oidc_issuer[0].issuer : ""
+  issuer              = azurerm_kubernetes_cluster.aks.oidc_issuer_enabled ? azurerm_kubernetes_cluster.aks.oidc_issuer_url : ""
   parent_id           = azurerm_user_assigned_identity.workload.id
   subject             = "system:serviceaccount:underwriting:underwriting-workload-sa"
 
@@ -216,7 +216,7 @@ resource "azurerm_cosmosdb_sql_container" "jobs" {
   resource_group_name = azurerm_resource_group.rg.name
   account_name        = azurerm_cosmosdb_account.cosmos.name
   database_name       = azurerm_cosmosdb_sql_database.underwriting.name
-  partition_key_path  = "/id"
+  partition_key_paths = ["/id"]
 
   autoscale_settings {
     max_throughput = var.cosmos_db_autopilot_throughput
@@ -242,7 +242,7 @@ resource "azurerm_cosmosdb_sql_container" "jobs" {
 # Role assignment: Workload Identity access to Cosmos
 resource "azurerm_role_assignment" "workload_cosmos" {
   scope              = azurerm_cosmosdb_account.cosmos.id
-  role_definition_name = "Cosmos DB Built-in Data Contributor"
+  role_definition_name = "DocumentDB Account Contributor"
   principal_id       = azurerm_user_assigned_identity.workload.principal_id
 }
 
@@ -287,26 +287,38 @@ resource "azurerm_eventgrid_system_topic" "blob_events" {
   depends_on = [azurerm_storage_account.storage]
 }
 
-# Event Grid Subscription: Blob created events to Service Bus
-resource "azurerm_eventgrid_system_topic_event_subscription" "blob_to_queue" {
-  name                = "blob-created-to-queue"
-  system_topic        = azurerm_eventgrid_system_topic.blob_events.name
-  resource_group_name = azurerm_resource_group.rg.name
+# Event Grid Subscription for blob created events
+resource "azurerm_eventgrid_event_subscription" "blob_created" {
+  name  = "${local.resource_prefix}-blob-created"
+  scope = azurerm_eventgrid_system_topic.blob_events.id
 
-  event_delivery_schema = "EventGridSchema"
-
-  filter {
-    subject_begins_with = "/blobServices/default/containers/documents"
-    subject_ends_with   = ""
-    included_event_types = ["Microsoft.Storage.BlobCreated"]
+  service_bus_queue_endpoint {
+    queue_name                    = azurerm_servicebus_queue.extraction_queue.name
+    service_bus_namespace_id      = azurerm_servicebus_namespace.sb.id
   }
 
-  service_bus_queue_endpoint_properties {
-    resource_id = azurerm_servicebus_queue.extraction_queue.id
+  included_event_types = [
+    "Microsoft.Storage.BlobCreated"
+  ]
+
+  subject_filter {
+    subject_begins_with = "/blobServices/default/containers/documents/"
   }
 
   depends_on = [
     azurerm_eventgrid_system_topic.blob_events,
     azurerm_servicebus_queue.extraction_queue
   ]
+}
+# Public IP for Load Balancer
+resource "azurerm_public_ip" "aks_lb" {
+  name                = "${local.resource_prefix}-aks-lb-ip"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_kubernetes_cluster.aks.node_resource_group
+  allocation_method   = "Static"
+  sku                 = "Standard"
+
+  tags = local.common_tags
+
+  depends_on = [azurerm_kubernetes_cluster.aks]
 }

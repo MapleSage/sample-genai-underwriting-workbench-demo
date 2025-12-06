@@ -31,6 +31,7 @@ import {
 import { useOAuth } from "./contexts/OAuthContext";
 import { LoginPage } from "./pages/LoginPage";
 import { OAuthCallback } from "./pages/OAuthCallback";
+import { authenticatedFetch } from "./utils/api";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useOAuth();
@@ -160,8 +161,8 @@ function UploadPage() {
   const uploadSingleFile = async (file: File) => {
     setUploadProgress({ [file.name]: "Getting upload URL..." });
 
-    const presignedUrlResponse = await fetch(
-      `${import.meta.env.VITE_API_URL}/documents/upload`,
+    const presignedUrlResponse = await authenticatedFetch(
+      `${import.meta.env.VITE_API_URL}/api/documents/upload`,
       {
         method: "POST",
         headers: {
@@ -225,8 +226,8 @@ function UploadPage() {
       Object.fromEntries(files.map((f) => [f.name, "Getting upload URLs..."]))
     );
 
-    const batchResponse = await fetch(
-      `${import.meta.env.VITE_API_URL}/documents/batch-upload`,
+    const batchResponse = await authenticatedFetch(
+      `${import.meta.env.VITE_API_URL}/api/documents/batch-upload`,
       {
         method: "POST",
         headers: {
@@ -690,7 +691,7 @@ function JobsList() {
 
   const fetchJobs = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/jobs`);
+      const response = await authenticatedFetch(`${import.meta.env.VITE_API_URL}/api/jobs`);
 
       if (!response.ok) {
         if (response.status === 401) {

@@ -14,6 +14,7 @@ import remarkGfm from "remark-gfm";
 import "../styles/JobPage.css";
 import { useNavigate } from "react-router-dom";
 import { HowItWorksDrawer } from "./HowItWorksDrawer";
+import { authenticatedFetch } from "../utils/api";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faFileAlt,
@@ -504,8 +505,8 @@ export function JobPage({ jobId }: JobPageProps) {
 
     setIsFetchingPdfUrl(true);
     try {
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/jobs/${jobId}/document-url`
+      const response = await authenticatedFetch(
+        `${import.meta.env.VITE_API_URL}/api/jobs/${jobId}/document-url`
       );
       if (!response.ok) {
         throw new Error("Failed to fetch document URL");
@@ -533,9 +534,8 @@ export function JobPage({ jobId }: JobPageProps) {
       }
 
       try {
-        const response = await fetch(
-          `${import.meta.env.VITE_API_URL}/jobs/${jobId}`,
-          {}
+        const response = await authenticatedFetch(
+          `${import.meta.env.VITE_API_URL}/api/jobs/${jobId}`
         );
 
         if (!response.ok) {
@@ -1327,8 +1327,8 @@ export function JobPage({ jobId }: JobPageProps) {
     setIsTyping(true);
     try {
       const messagesToSend = updatedMessages.filter((msg) => msg.id !== "1");
-      const response = await fetch(
-        `${import.meta.env.VITE_API_URL}/chat/${jobId}`,
+      const response = await authenticatedFetch(
+        `${import.meta.env.VITE_API_URL}/api/chat/${jobId}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },

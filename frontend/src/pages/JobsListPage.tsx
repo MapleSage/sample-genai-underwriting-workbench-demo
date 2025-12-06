@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import { authenticatedFetch } from "../utils/api";
 import {
   faList,
   faFileMedical,
@@ -30,7 +31,7 @@ export function JobsListPage() {
 
   const fetchJobs = async () => {
     try {
-      const response = await fetch(`${import.meta.env.VITE_API_URL}/jobs`);
+      const response = await authenticatedFetch(`${import.meta.env.VITE_API_URL}/api/jobs`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch jobs");

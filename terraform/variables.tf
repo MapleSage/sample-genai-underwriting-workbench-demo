@@ -31,7 +31,7 @@ variable "project_name" {
 variable "kubernetes_version" {
   type        = string
   description = "Kubernetes version"
-  default     = "1.28"
+  default     = "1.30"
 }
 
 variable "aks_node_count" {
@@ -55,7 +55,7 @@ variable "aks_max_node_count" {
 variable "aks_vm_size" {
   type        = string
   description = "VM size for AKS nodes"
-  default     = "Standard_D3_v2"
+  default     = "Standard_D4s_v3"
 }
 
 # Storage Configuration

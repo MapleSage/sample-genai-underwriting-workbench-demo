@@ -15,7 +15,7 @@ output "aks_kube_config" {
 }
 
 output "aks_oidc_issuer_url" {
-  value       = try(azurerm_kubernetes_cluster.aks.oidc_issuer[0].issuer, null)
+  value       = try(azurerm_kubernetes_cluster.aks.oidc_issuer_url, null)
   description = "OIDC issuer URL for Workload Identity"
 }
 
@@ -83,4 +83,9 @@ output "log_analytics_workspace_id" {
 output "resource_group_name" {
   value       = azurerm_resource_group.rg.name
   description = "Resource group name"
+}
+
+output "aks_load_balancer_ip" {
+  value       = azurerm_public_ip.aks_lb.ip_address
+  description = "AKS Load Balancer Public IP"
 }
