@@ -1,0 +1,70 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: real-api
+  namespace: underwriting
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: real-api
+  template:
+    metadata:
+      labels:
+        app: real-api
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: underwriting-workload-sa
+      containers:
+      - name: api
+        image: python:3.11-slim
+        command: ["/bin/bash"]
+        args: ["-c", "pip install flask azure-cosmos azure-storage-blob azure-identity && python /app/api-server.py"]
+        ports:
+        - containerPort: 8080
+        env:
+        - name: AZURE_CLIENT_ID
+          value: "5bfbf7c0-52f2-4e5d-9d4a-ff4a7579e70e"
+        volumeMounts:
+        - name: api-code
+          mountPath: /app
+      volumes:
+      - name: api-code
+        configMap:
+          name: api-code
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: real-api-svc
+  namespace: underwriting
+spec:
+  selector:
+    app: real-api
+  ports:
+  - port: 80
+    targetPort: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: real-api-ingress
+  namespace: underwriting
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
+    nginx.ingress.kubernetes.io/cors-allow-origin: "https://uw.sagesure.io"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization"
+spec:
+  ingressClassName: nginx
+  rules:
+  - http:
+      paths:
+      - path: /api(/|$)(.*)
+        pathType: ImplementationSpecific
+        backend:
+          service:
+            name: real-api-svc
+            port:
+              number: 80

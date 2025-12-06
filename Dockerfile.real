@@ -1,0 +1,11 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+RUN pip install flask azure-cosmos azure-storage-blob azure-identity
+
+COPY api-server.py .
+
+EXPOSE 8080
+
+CMD ["python", "api-server.py"]

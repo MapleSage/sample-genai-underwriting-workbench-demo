@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: document-worker
+  namespace: underwriting
+  labels:
+    app: document-worker
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: document-worker
+  template:
+    metadata:
+      labels:
+        app: document-worker
+        azure.workload.identity/use: "true"
+    spec:
+      serviceAccountName: underwriting-workload-sa
+      containers:
+        - name: worker
+          image: uwworkbenchprodacr.azurecr.io/uw/worker:latest
+          imagePullPolicy: Always
+          env:
+            - name: AZURE_CLIENT_ID
+              value: "5bfbf7c0-52f2-4e5d-9d4a-ff4a7579e70e"
+            - name: COSMOS_DB_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uw-secrets
+                  key: COSMOS_DB_KEY
+            - name: AZURE_OPENAI_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: uw-secrets
+                  key: OPENAI_API_KEY
+            - name: SERVICE_BUS_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: uw-secrets
+                  key: SERVICE_BUS_CONNECTION_STRING
+            - name: STORAGE_CONNECTION_STRING
+              valueFrom:
+                secretKeyRef:
+                  name: uw-secrets
+                  key: STORAGE_CONNECTION_STRING
+          envFrom:
+            - configMapRef:
+                name: uw-config
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "[ -f /tmp/worker_alive ] && find /tmp -name 'worker_alive' -mmin -2"
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
