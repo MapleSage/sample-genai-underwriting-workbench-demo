@@ -1,0 +1,58 @@
+name: Terraform Plan and Apply
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Set to "true" to perform terraform apply'
+        required: false
+        default: 'false'
+
+jobs:
+  terraform:
+    name: Terraform Plan and Optional Apply
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v1
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get Subscription ID
+        id: subscriptionid
+        run: |
+          SUB_ID=$(az account show --query id -o tsv)
+          echo "subscription_id=$SUB_ID" >> $GITHUB_OUTPUT
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: '1.14.1'
+
+      - name: Terraform Init
+        working-directory: ./terraform
+        run: terraform init -input=false
+
+      - name: Terraform Plan
+        working-directory: ./terraform
+        run: |
+          terraform plan -out=plan.tfplan -input=false \
+            -var="subscription_id=${{ steps.subscriptionid.outputs.subscription_id }}"
+
+      - name: Save plan artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan
+          path: terraform/plan.tfplan
+
+      - name: Terraform Apply
+        if: ${{ github.event.inputs.apply == 'true' }}
+        working-directory: ./terraform
+        run: |
+          terraform apply -input=false -var="subscription_id=${{ steps.subscriptionid.outputs.subscription_id }}" plan.tfplan
