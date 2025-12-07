@@ -102,7 +102,7 @@ spec:
           port: 8443
 
 ---
-# API Handler Deployment
+# API Handler Deployment - Updated
 apiVersion: apps/v1
 kind: Deployment
 metadata:
