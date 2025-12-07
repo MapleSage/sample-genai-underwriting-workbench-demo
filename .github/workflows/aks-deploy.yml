@@ -106,6 +106,15 @@ jobs:
             --name ${{ secrets.AKS_CLUSTER_NAME }} \
             --overwrite-existing
 
+      - name: Resolve ACR login server for deployment
+        run: |
+          set -euo pipefail
+          ACR_NAME="${{ secrets.ACR_NAME }}"
+          ACR_LOGIN_SERVER="$(az acr show --name "$ACR_NAME" --query loginServer -o tsv 2>/dev/null || echo "${ACR_NAME}.azurecr.io")"
+          echo "ACR_LOGIN_SERVER=${ACR_LOGIN_SERVER}" >> $GITHUB_ENV
+          echo "IMAGE_API=${ACR_LOGIN_SERVER}/uw/api" >> $GITHUB_ENV
+          echo "IMAGE_WORKER=${ACR_LOGIN_SERVER}/uw/worker" >> $GITHUB_ENV
+
       - name: Update manifests with image tags
         run: |
           sed -i "s|your-acr-name.azurecr.io/uw/api:latest|${{ env.IMAGE_API }}:${{ github.sha }}|g" k8s/manifests.yaml

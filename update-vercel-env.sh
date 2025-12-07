@@ -1,15 +1,14 @@
 #!/bin/bash
 
-# Update Frontend API URL Script
-# This script updates the Vercel environment variable and redeploys the frontend
+# Simple Vercel Environment Variable Update Script
+# This script only updates the environment variable without deploying
 
 set -euo pipefail
 
 # Configuration
 API_URL="${1:-http://4.154.255.64}"
-PROJECT_NAME="azure-underwriting"
 
-echo "🚀 Updating frontend API URL to: $API_URL"
+echo "🚀 Updating Vercel environment variable to: $API_URL"
 
 # Check if Vercel CLI is installed
 if ! command -v vercel &> /dev/null; then
@@ -29,20 +28,12 @@ echo "🔧 Updating Vercel environment variable..."
 vercel env rm VITE_API_URL production --yes 2>/dev/null || true
 echo "$API_URL" | vercel env add VITE_API_URL production
 
-# Deploy to Vercel
-echo "🚀 Deploying to Vercel..."
-vercel --prod --yes
-
-echo "✅ Frontend updated successfully!"
-echo "🌐 Frontend URL: https://uw.sagesure.io"
+echo "✅ Environment variable updated successfully!"
 echo "🔗 API URL: $API_URL"
+echo "📝 Note: You may need to trigger a new deployment manually in Vercel dashboard"
+echo "🌐 Vercel Dashboard: https://vercel.com/maplesage-s-projects/azure-underwriting"
 
 # Go back to root directory
 cd ..
 
-# Commit the changes
-echo "📝 Committing changes to git..."
-git add frontend/.env.production
-git commit -m "Update frontend API URL to $API_URL" || echo "No changes to commit"
-
-echo "🎉 All done! Frontend is now pointing to: $API_URL"
+echo "🎉 Done! Environment variable is now set to: $API_URL"

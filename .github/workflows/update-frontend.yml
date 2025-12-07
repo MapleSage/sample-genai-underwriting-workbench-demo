@@ -1,0 +1,62 @@
+name: Update Frontend API URL
+
+on:
+  workflow_run:
+    workflows: ["Build and Deploy to AKS"]
+    types:
+      - completed
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: 'API URL to update frontend with'
+        required: true
+        default: 'http://4.154.255.64/api'
+
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+
+jobs:
+  update-frontend:
+    runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' || github.event_name == 'workflow_dispatch' }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Set API URL
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            API_URL="${{ github.event.inputs.api_url }}"
+          else
+            API_URL="http://4.154.255.64"
+          fi
+          echo "API_URL=${API_URL}" >> $GITHUB_ENV
+
+      - name: Update Vercel environment variable
+        run: |
+          echo "Updating VITE_API_URL to: ${{ env.API_URL }}"
+          cd frontend
+          vercel env rm VITE_API_URL production --yes --token=${{ secrets.VERCEL_TOKEN }} || true
+          echo "${{ env.API_URL }}" | vercel env add VITE_API_URL production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Trigger Vercel deployment
+        run: |
+          cd frontend
+          vercel --prod --token=${{ secrets.VERCEL_TOKEN }} --yes --force
+
+      - name: Update local env file
+        run: |
+          echo "VITE_API_URL=${{ env.API_URL }}" > frontend/.env.production
+          
+      - name: Commit updated env file
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add frontend/.env.production
+          git commit -m "Update frontend API URL to ${{ env.API_URL }}" || exit 0
+          git push || exit 0
