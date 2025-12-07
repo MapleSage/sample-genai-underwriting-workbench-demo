@@ -31,7 +31,7 @@ export function JobsListPage() {
 
   const fetchJobs = async () => {
     try {
-      const response = await authenticatedFetch(`${import.meta.env.VITE_API_URL}/api/jobs`);
+      const response = await authenticatedFetch(`${import.meta.env.VITE_API_URL}/jobs`);
 
       if (!response.ok) {
         throw new Error("Failed to fetch jobs");

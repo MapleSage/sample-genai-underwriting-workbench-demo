@@ -162,7 +162,7 @@ function UploadPage() {
     setUploadProgress({ [file.name]: "Getting upload URL..." });
 
     const presignedUrlResponse = await authenticatedFetch(
-      `${import.meta.env.VITE_API_URL}/api/documents/upload`,
+      `${import.meta.env.VITE_API_URL}/documents/upload`,
       {
         method: "POST",
         headers: {
@@ -227,7 +227,7 @@ function UploadPage() {
     );
 
     const batchResponse = await authenticatedFetch(
-      `${import.meta.env.VITE_API_URL}/api/documents/batch-upload`,
+      `${import.meta.env.VITE_API_URL}/documents/batch-upload`,
       {
         method: "POST",
         headers: {
@@ -691,7 +691,7 @@ function JobsList() {
 
   const fetchJobs = async () => {
     try {
-      const response = await authenticatedFetch(`${import.meta.env.VITE_API_URL}/api/jobs`);
+      const response = await authenticatedFetch(`${import.meta.env.VITE_API_URL}/jobs`);
 
       if (!response.ok) {
         if (response.status === 401) {

@@ -506,7 +506,7 @@ export function JobPage({ jobId }: JobPageProps) {
     setIsFetchingPdfUrl(true);
     try {
       const response = await authenticatedFetch(
-        `${import.meta.env.VITE_API_URL}/api/jobs/${jobId}/document-url`
+        `${import.meta.env.VITE_API_URL}/jobs/${jobId}/document-url`
       );
       if (!response.ok) {
         throw new Error("Failed to fetch document URL");
@@ -535,7 +535,7 @@ export function JobPage({ jobId }: JobPageProps) {
 
       try {
         const response = await authenticatedFetch(
-          `${import.meta.env.VITE_API_URL}/api/jobs/${jobId}`
+          `${import.meta.env.VITE_API_URL}/jobs/${jobId}`
         );
 
         if (!response.ok) {
@@ -1328,7 +1328,7 @@ export function JobPage({ jobId }: JobPageProps) {
     try {
       const messagesToSend = updatedMessages.filter((msg) => msg.id !== "1");
       const response = await authenticatedFetch(
-        `${import.meta.env.VITE_API_URL}/api/chat/${jobId}`,
+        `${import.meta.env.VITE_API_URL}/chat/${jobId}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
