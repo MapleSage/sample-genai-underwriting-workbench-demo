@@ -1,38 +1,19 @@
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { handleOAuthCallback } from "../utils/cognitoOAuth";
-import { useOAuth } from "../contexts/OAuthContext";
+import { useAuth } from "../contexts/AuthContext";
 
 export const OAuthCallback = () => {
   const navigate = useNavigate();
-  const { refreshAuthState } = useOAuth();
-  const hasProcessed = useRef(false);
+  const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
-    // Prevent double execution
-    if (hasProcessed.current) {
-      return;
+    if (isLoading) return;
+    if (isAuthenticated) {
+      navigate("/", { replace: true });
+    } else {
+      navigate("/login", { replace: true });
     }
-    hasProcessed.current = true;
-
-    const processCallback = async () => {
-      const tokens = await handleOAuthCallback();
-
-      if (tokens) {
-        // Successfully authenticated, refresh auth state and redirect to home
-        refreshAuthState();
-        // Small delay to ensure state is updated
-        setTimeout(() => {
-          navigate("/", { replace: true });
-        }, 100);
-      } else {
-        // Failed to authenticate, redirect to login
-        navigate("/login", { replace: true });
-      }
-    };
-
-    processCallback();
-  }, [navigate, refreshAuthState]);
+  }, [isLoading, isAuthenticated, navigate]);
 
   return (
     <div
@@ -43,8 +24,9 @@ export const OAuthCallback = () => {
         height: "100vh",
         fontSize: "18px",
         color: "#667eea",
-      }}>
-      Completing sign in...
+      }}
+    >
+      Processing sign in...
     </div>
   );
 };
