@@ -1,236 +1,102 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import {
-  CognitoUser,
-  AuthenticationDetails,
-  CognitoUserPool,
-  CognitoUserAttribute,
-} from "amazon-cognito-identity-js";
-import { cognitoConfig } from "../config/cognito";
+  isAuthenticated,
+  signInWithAzureAD,
+  signOut,
+  getIdToken,
+  handleRedirectCallback,
+  initializeMsal,
+  getUserInfo,
+} from "../utils/azureAuth";
 
 interface AuthContextType {
-  user: CognitoUser | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  signIn: (username: string, password: string) => Promise<void>;
-  signUp: (username: string, email: string, password: string) => Promise<void>;
+  signIn: () => void;
   signOut: () => void;
-  confirmSignUp: (username: string, code: string) => Promise<void>;
-  resendConfirmationCode: (username: string) => Promise<void>;
-  forgotPassword: (username: string) => Promise<void>;
-  confirmPassword: (
-    username: string,
-    code: string,
-    newPassword: string
-  ) => Promise<void>;
-  getIdToken: () => Promise<string | null>;
+  getToken: () => Promise<string | null>;
+  userInfo: { username: string; name: string | undefined; email: string } | null;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const userPool = new CognitoUserPool({
-  UserPoolId: cognitoConfig.userPoolId,
-  ClientId: cognitoConfig.userPoolWebClientId,
-});
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
   children,
 }) => {
-  const [user, setUser] = useState<CognitoUser | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [authenticated, setAuthenticated] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [userInfo, setUserInfo] = useState<{ username: string; name: string | undefined; email: string } | null>(null);
 
   useEffect(() => {
-    // Check if user is already authenticated
-    const currentUser = userPool.getCurrentUser();
-    if (currentUser) {
-      currentUser.getSession((err: Error | null, session: any) => {
-        if (err) {
-          console.error("Session error:", err);
-          setIsLoading(false);
-          return;
+    const initialize = async () => {
+      try {
+        // Initialize MSAL
+        await initializeMsal();
+
+        // Handle redirect callback only when returning from Azure AD (prevent race conditions)
+        const currentPath = window.location.pathname;
+        const currentSearch = window.location.search;
+        const hasRedirectParams = currentPath === "/auth/callback" || currentSearch.includes("code=") || currentSearch.includes("state=");
+
+        if (hasRedirectParams) {
+          console.debug("Found redirect params; handling redirect callback");
+          try {
+            const response = await handleRedirectCallback();
+            if (response) {
+              console.debug("Login successful:", response);
+            }
+          } catch (err) {
+            console.error("Error handling redirect callback:", err);
+          }
+        } else {
+          console.debug("No redirect params detected; skipping handleRedirectCallback");
         }
-        if (session.isValid()) {
-          setUser(currentUser);
+
+        // Check authentication status
+        const authState = isAuthenticated();
+        console.debug("Auth state after init:", authState);
+        setAuthenticated(authState);
+
+        // Get user info if authenticated
+        if (authState) {
+          const info = getUserInfo();
+          setUserInfo(info);
         }
-        setIsLoading(false);
-      });
-    } else {
-      setIsLoading(false);
-    }
+      } catch (error) {
+        console.error("Error initializing auth:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initialize();
   }, []);
 
-  const signIn = async (username: string, password: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const authenticationDetails = new AuthenticationDetails({
-        Username: username,
-        Password: password,
-      });
-
-      const cognitoUser = new CognitoUser({
-        Username: username,
-        Pool: userPool,
-      });
-
-      cognitoUser.authenticateUser(authenticationDetails, {
-        onSuccess: (result) => {
-          setUser(cognitoUser);
-          resolve();
-        },
-        onFailure: (err) => {
-          reject(err);
-        },
-        newPasswordRequired: (userAttributes, requiredAttributes) => {
-          // Handle new password required
-          reject(new Error("New password required"));
-        },
-      });
-    });
+  const handleSignIn = () => {
+    signInWithAzureAD();
   };
 
-  const signUp = async (
-    username: string,
-    email: string,
-    password: string
-  ): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const attributeList = [
-        new CognitoUserAttribute({
-          Name: "email",
-          Value: email,
-        }),
-      ];
-
-      userPool.signUp(username, password, attributeList, [], (err, result) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve();
-      });
-    });
+  const handleSignOut = async () => {
+    await signOut();
+    setAuthenticated(false);
+    setUserInfo(null);
   };
 
-  const confirmSignUp = async (
-    username: string,
-    code: string
-  ): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const cognitoUser = new CognitoUser({
-        Username: username,
-        Pool: userPool,
-      });
-
-      cognitoUser.confirmRegistration(code, true, (err, result) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve();
-      });
-    });
-  };
-
-  const resendConfirmationCode = async (username: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const cognitoUser = new CognitoUser({
-        Username: username,
-        Pool: userPool,
-      });
-
-      cognitoUser.resendConfirmationCode((err, result) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        resolve();
-      });
-    });
-  };
-
-  const forgotPassword = async (username: string): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const cognitoUser = new CognitoUser({
-        Username: username,
-        Pool: userPool,
-      });
-
-      cognitoUser.forgotPassword({
-        onSuccess: () => {
-          resolve();
-        },
-        onFailure: (err) => {
-          reject(err);
-        },
-      });
-    });
-  };
-
-  const confirmPassword = async (
-    username: string,
-    code: string,
-    newPassword: string
-  ): Promise<void> => {
-    return new Promise((resolve, reject) => {
-      const cognitoUser = new CognitoUser({
-        Username: username,
-        Pool: userPool,
-      });
-
-      cognitoUser.confirmPassword(code, newPassword, {
-        onSuccess: () => {
-          resolve();
-        },
-        onFailure: (err) => {
-          reject(err);
-        },
-      });
-    });
-  };
-
-  const signOut = () => {
-    const currentUser = userPool.getCurrentUser();
-    if (currentUser) {
-      currentUser.signOut();
-    }
-    setUser(null);
-  };
-
-  const getIdToken = async (): Promise<string | null> => {
-    return new Promise((resolve, reject) => {
-      const currentUser = userPool.getCurrentUser();
-      if (!currentUser) {
-        resolve(null);
-        return;
-      }
-
-      currentUser.getSession((err: Error | null, session: any) => {
-        if (err) {
-          reject(err);
-          return;
-        }
-        if (session.isValid()) {
-          resolve(session.getIdToken().getJwtToken());
-        } else {
-          resolve(null);
-        }
-      });
-    });
+  const getToken = async () => {
+    return await getIdToken();
   };
 
   return (
     <AuthContext.Provider
       value={{
-        user,
-        isAuthenticated: !!user,
-        isLoading,
-        signIn,
-        signUp,
-        signOut,
-        confirmSignUp,
-        resendConfirmationCode,
-        forgotPassword,
-        confirmPassword,
-        getIdToken,
-      }}>
+        isAuthenticated: authenticated,
+        isLoading: loading,
+        signIn: handleSignIn,
+        signOut: handleSignOut,
+        getToken,
+        userInfo,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
