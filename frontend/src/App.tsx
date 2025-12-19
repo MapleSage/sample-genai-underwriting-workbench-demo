@@ -5,11 +5,12 @@ import {
   Route,
   useNavigate,
   useParams,
-  Navigate,
-  useLocation,
 } from "react-router-dom";
 import "./styles/App.css";
 import { JobPage } from "./components/JobPage";
+import { AuthProvider } from "./contexts/AuthContext";
+import { LoginPage } from "./pages/LoginPage";
+import { OAuthCallback } from "./pages/OAuthCallback";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faShieldAlt,
@@ -26,51 +27,8 @@ import {
   faHome,
   faSearch,
   faTimes,
-  faSignOutAlt,
 } from "@fortawesome/free-solid-svg-icons";
-import { useOAuth } from "./contexts/OAuthContext";
-import { LoginPage } from "./pages/LoginPage";
-import { OAuthCallback } from "./pages/OAuthCallback";
-import { authenticatedFetch } from "./utils/api";
-
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, isLoading } = useOAuth();
-
-  if (isLoading) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}>
-        Loading...
-      </div>
-    );
-  }
-
-  if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
-  }
-
-  return <>{children}</>;
-}
-
-function SignOutButton() {
-  const { signOut } = useOAuth();
-
-  return (
-    <button
-      type="button"
-      onClick={signOut}
-      className="nav-button sign-out-button"
-      style={{ marginLeft: "10px" }}>
-      <FontAwesomeIcon icon={faSignOutAlt} style={{ marginRight: "8px" }} />
-      Sign Out
-    </button>
-  );
-}
+// Regular fetch will be used instead of authenticatedFetch
 
 function UploadPage() {
   const [files, setFiles] = useState<File[]>([]);
@@ -161,7 +119,7 @@ function UploadPage() {
   const uploadSingleFile = async (file: File) => {
     setUploadProgress({ [file.name]: "Getting upload URL..." });
 
-    const presignedUrlResponse = await authenticatedFetch(
+    const presignedUrlResponse = await fetch(
       `${import.meta.env.VITE_API_URL}/documents/upload`,
       {
         method: "POST",
@@ -187,7 +145,7 @@ function UploadPage() {
           .catch(() => ({ error: "Failed to get upload URL." }));
         throw new Error(
           errorData.error ||
-            `Failed to get upload URL: ${presignedUrlResponse.statusText}`
+          `Failed to get upload URL: ${presignedUrlResponse.statusText}`
         );
       }
     }
@@ -225,45 +183,27 @@ function UploadPage() {
     setUploadProgress(
       Object.fromEntries(files.map((f) => [f.name, "Getting upload URLs..."]))
     );
-
-    const batchResponse = await authenticatedFetch(
-      `${import.meta.env.VITE_API_URL}/documents/batch-upload`,
+    // Request batch upload URLs from server
+    const batchResponse = await fetch(
+      `${import.meta.env.VITE_API_URL}/documents/upload_batch`,
       {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          files: files.map((f) => ({ filename: f.name })),
-          insuranceType: insuranceType,
-        }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(files.map((f) => ({ filename: f.name, contentType: f.type, insuranceType }))),
       }
     );
 
     if (!batchResponse.ok) {
-      if (batchResponse.status === 401) {
-        throw new Error("Unauthorized: API access denied for batch upload.");
-      } else {
-        const errorData = await batchResponse
-          .json()
-          .catch(() => ({ error: "Failed to get batch upload URLs." }));
-        throw new Error(
-          errorData.error ||
-            `Failed to get batch upload URLs: ${batchResponse.statusText}`
-        );
-      }
+      throw new Error(`Failed to get upload URLs: ${batchResponse.statusText}`);
     }
 
-    const { uploadUrls } = await batchResponse.json();
-    if (!uploadUrls || !Array.isArray(uploadUrls)) {
-      throw new Error("Invalid response from batch upload endpoint.");
-    }
+    const uploadInfos: { filename: string; uploadUrl: string; jobId: string }[] = await batchResponse.json();
 
-    // Step 2: Upload all files to Azure Blob Storage
-    const uploadPromises = files.map(async (file, index) => {
-      const uploadInfo = uploadUrls.find((u) => u.filename === file.name);
+    // Step 2: Upload all files to the provided upload URLs
+    const uploadPromises = files.map(async (file) => {
+      const uploadInfo = uploadInfos.find((j) => j.filename === file.name);
       if (!uploadInfo) {
-        throw new Error(`No upload URL found for ${file.name}`);
+        throw new Error(`No upload URL returned for ${file.name}`);
       }
 
       setUploadProgress((prev) => ({
@@ -282,7 +222,7 @@ function UploadPage() {
 
       if (!azureUploadResponse.ok) {
         throw new Error(
-          `Azure Upload Failed for ${file.name}: ${azureUploadResponse.statusText}`
+          `Upload Failed for ${file.name}: ${azureUploadResponse.statusText}`
         );
       }
 
@@ -311,9 +251,8 @@ function UploadPage() {
         <div className="header-controls">
           <div className="header-insurance-toggle">
             <label
-              className={`option ${
-                insuranceType === "life" ? "selected" : ""
-              }`}>
+              className={`option ${insuranceType === "life" ? "selected" : ""
+                }`}>
               <input
                 type="radio"
                 name="headerInsuranceType"
@@ -327,9 +266,8 @@ function UploadPage() {
               <span>Life</span>
             </label>
             <label
-              className={`option ${
-                insuranceType === "property_casualty" ? "selected" : ""
-              }`}>
+              className={`option ${insuranceType === "property_casualty" ? "selected" : ""
+                }`}>
               <input
                 type="radio"
                 name="headerInsuranceType"
@@ -350,7 +288,9 @@ function UploadPage() {
             <FontAwesomeIcon icon={faList} style={{ marginRight: "8px" }} />
             View All Jobs
           </button>
-          <SignOutButton />
+          <div className="nav-buttons">
+            {/* Navigation buttons can go here */}
+          </div>
         </div>
       </div>
 
@@ -504,9 +444,8 @@ function UploadPage() {
           <h3>Insurance Type</h3>
           <div className="insurance-options">
             <label
-              className={`option ${
-                insuranceType === "life" ? "selected" : ""
-              }`}>
+              className={`option ${insuranceType === "life" ? "selected" : ""
+                }`}>
               <input
                 type="radio"
                 name="insuranceType"
@@ -520,9 +459,8 @@ function UploadPage() {
               <span className="option-label">Life Insurance</span>
             </label>
             <label
-              className={`option ${
-                insuranceType === "property_casualty" ? "selected" : ""
-              }`}>
+              className={`option ${insuranceType === "property_casualty" ? "selected" : ""
+                }`}>
               <input
                 type="radio"
                 name="insuranceType"
@@ -585,9 +523,8 @@ function UploadPage() {
               className="upload-button">
               {uploading
                 ? "Uploading..."
-                : `Analyze ${files.length} Document${
-                    files.length > 1 ? "s" : ""
-                  }`}
+                : `Analyze ${files.length} Document${files.length > 1 ? "s" : ""
+                }`}
             </button>
           </div>
         )}
@@ -611,39 +548,16 @@ interface Job {
   uploadTimestamp: string;
   status: "Complete" | "In Progress" | "Failed";
 }
-
-// Add the JobsList component
 function JobsList() {
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [selectedBatch, setSelectedBatch] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [collapsedBatches, setCollapsedBatches] = useState<Set<string>>(
-    new Set()
-  );
   const navigate = useNavigate();
   const [searchInput, setSearchInput] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const handleSearch = () => {
-    setSearchQuery(searchInput.trim());
-  };
-
-  const handleClear = () => {
-    setSearchInput("");
-    setSearchQuery("");
-  };
-
-  const handleKeyDown = (e: any) => {
-    if (e.key === "Enter") {
-      handleSearch();
-    }
-  };
-
-  const filteredJobs = searchQuery
-    ? jobs.filter((job) =>
-        job.originalFilename.toLowerCase().includes(searchQuery.toLowerCase())
-      )
-    : jobs;
+  // ...
 
   useEffect(() => {
     fetchJobs();
@@ -657,46 +571,41 @@ function JobsList() {
     return () => clearInterval(pollInterval);
   }, []);
 
-  const toggleBatch = (batchId: string) => {
-    const newCollapsed = new Set(collapsedBatches);
-    if (newCollapsed.has(batchId)) {
-      newCollapsed.delete(batchId);
-    } else {
-      newCollapsed.add(batchId);
+  // Handle date group selection
+  const handleDateGroupSelect = (date: string) => {
+    setSelectedBatch(selectedBatch === date ? null : date);
+  };
+
+  // Group jobs by upload date
+  const groupedJobs = jobs.reduce<Record<string, Job[]>>((acc, job) => {
+    const key = new Date(job.uploadTimestamp).toDateString();
+    if (!acc[key]) {
+      acc[key] = [];
     }
-    setCollapsedBatches(newCollapsed);
-  };
+    acc[key].push(job);
+    return acc;
+  }, {});
 
-  const groupJobsByBatch = (jobs: Job[]) => {
-    const grouped = jobs.reduce((acc, job) => {
-      const batchId = job.batchId; // All jobs now have batchId
-      if (!acc[batchId]) {
-        acc[batchId] = [];
-      }
-      acc[batchId].push(job);
-      return acc;
-    }, {} as Record<string, Job[]>);
-    return grouped;
-  };
-
-  const getShortBatchId = (batchId: string) => {
-    return batchId.slice(-8);
-  };
-
-  const getBatchTimestamp = (jobs: Job[]) => {
-    const timestamps = jobs.map((job) => new Date(job.uploadTimestamp));
-    const earliest = new Date(Math.min(...timestamps.map((d) => d.getTime())));
-    return earliest.toLocaleString();
+  // Get status summary for a date group
+  const getDateGroupStatus = (jobs: Job[]) => {
+    const statuses = jobs.map((job) => job.status);
+    if (statuses.some((s) => s === 'Failed')) return 'Failed';
+    if (statuses.some((s) => s === 'In Progress')) return 'In Progress';
+    return 'Complete';
   };
 
   const fetchJobs = async () => {
     try {
-      const response = await authenticatedFetch(`${import.meta.env.VITE_API_URL}/jobs`);
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/jobs`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
 
       if (!response.ok) {
         if (response.status === 401) {
           setError("Unauthorized: API access denied.");
-          setLoading(false);
+          setIsLoading(false);
           return;
         }
         throw new Error("Failed to fetch jobs");
@@ -707,7 +616,7 @@ function JobsList() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred");
     } finally {
-      setLoading(false);
+      setIsLoading(false);
     }
   };
 
@@ -850,9 +759,8 @@ function JobsList() {
                       onClick={() => toggleBatch(batchId)}>
                       <h3>
                         <span
-                          className={`batch-toggle ${
-                            collapsedBatches.has(batchId) ? "collapsed" : ""
-                          }`}>
+                          className={`batch-toggle ${collapsedBatches.has(batchId) ? "collapsed" : ""
+                            }`}>
                           ▼
                         </span>
                         Batch ID: {getShortBatchId(batchId)}
@@ -905,36 +813,17 @@ function JobsList() {
 
 function App() {
   return (
-    <Router>
-      <Routes>
-        <Route path="/login" element={<LoginPage />} />
-        <Route path="/auth/callback" element={<OAuthCallback />} />
-        <Route
-          path="/"
-          element={
-            <ProtectedRoute>
-              <UploadPage />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/jobs"
-          element={
-            <ProtectedRoute>
-              <JobsList />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/jobs/:jobId"
-          element={
-            <ProtectedRoute>
-              <JobPageWrapper />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
-    </Router>
+    <AuthProvider>
+      <Router>
+        <Routes>
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/auth/callback" element={<OAuthCallback />} />
+          <Route path="/" element={<UploadPage />} />
+          <Route path="/jobs" element={<JobsList />} />
+          <Route path="/jobs/:jobId" element={<JobPageWrapper />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 

@@ -1,8 +1,10 @@
-# AWS Cognito Authentication Setup
+# AWS Cognito Authentication Setup (Deprecated)
 
 ## Overview
 
-The Azure Underwriting Workbench now uses **AWS Cognito** for authentication with a **custom managed login UI** (not hosted UI).
+This file documents the previous setup using AWS Cognito. The project has been migrated to use Azure Active Directory (MSAL) for authentication. For the current setup, see `AZURE_AD_AUTH_SETUP.md`.
+
+**Please follow azure-version/AZURE_AD_AUTH_SETUP.md for the up-to-date instructions.**
 
 ## Configuration
 

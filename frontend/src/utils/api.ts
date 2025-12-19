@@ -1,52 +1,18 @@
-import { CognitoUserPool } from "amazon-cognito-identity-js";
-import { cognitoConfig } from "../config/cognito";
+import { getIdToken } from "./azureAuth";
 
-const userPool = new CognitoUserPool({
-  UserPoolId: cognitoConfig.userPoolId,
-  ClientId: cognitoConfig.userPoolWebClientId,
-});
-
-export const getAuthHeaders = async (): Promise<Record<string, string>> => {
-  return new Promise((resolve, reject) => {
-    const currentUser = userPool.getCurrentUser();
-
-    if (!currentUser) {
-      resolve({});
-      return;
-    }
-
-    currentUser.getSession((err: Error | null, session: any) => {
-      if (err) {
-        console.error("Error getting session:", err);
-        resolve({});
-        return;
-      }
-
-      if (session && session.isValid()) {
-        const idToken = session.getIdToken().getJwtToken();
-        resolve({
-          Authorization: `Bearer ${idToken}`,
-        });
-      } else {
-        resolve({});
-      }
-    });
-  });
-};
-
-export const authenticatedFetch = async (
+export async function authenticatedFetch(
   url: string,
   options: RequestInit = {}
-): Promise<Response> => {
-  const authHeaders = await getAuthHeaders();
+): Promise<Response> {
+  const token = await getIdToken();
 
   const headers = {
     ...options.headers,
-    ...authHeaders,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
   return fetch(url, {
     ...options,
     headers,
   });
-};
+}
